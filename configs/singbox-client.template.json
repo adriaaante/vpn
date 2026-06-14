@@ -14,24 +14,15 @@
       {
         "type": "local",
         "tag": "dns-local"
-      },
-      {
-        "type": "fakeip",
-        "tag": "dns-fakeip",
-        "inet4_range": "198.18.0.0/15",
-        "inet6_range": "fc00::/18"
       }
     ],
     "rules": [
       {
         "domain_suffix": [".ru", ".рф", "mail.ru", "yandex.net", "vk.com", "vkontakte.ru", "sberbank.ru", "gosuslugi.ru"],
         "server": "dns-local"
-      },
-      {
-        "query_type": ["A", "AAAA"],
-        "server": "dns-fakeip"
       }
     ],
+    "strategy": "prefer_ipv4",
     "independent_cache": true,
     "final": "dns-remote"
   },
@@ -109,7 +100,17 @@
         "domain_suffix": [".ru", ".рф", "mail.ru", "yandex.net", "vk.com", "vkontakte.ru", "sberbank.ru", "gosuslugi.ru"],
         "outbound": "direct"
       },
-      { "rule_set": "geoip-ru", "outbound": "direct" }
+      { "rule_set": "geoip-ru", "outbound": "direct" },
+      {
+        "domain_suffix": [
+          "claude.ai", "anthropic.com", "claude.com",
+          "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com",
+          "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com",
+          "telegram.org", "t.me", "telegram.me", "telesco.pe"
+        ],
+        "outbound": "proxy"
+      },
+      { "rule_set": "geoip-telegram", "outbound": "proxy" }
     ],
     "rule_set": [
       {
@@ -117,6 +118,13 @@
         "tag": "geoip-ru",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs",
+        "download_detour": "proxy"
+      },
+      {
+        "type": "remote",
+        "tag": "geoip-telegram",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-telegram.srs",
         "download_detour": "proxy"
       }
     ],

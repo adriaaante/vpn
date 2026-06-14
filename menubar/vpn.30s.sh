@@ -17,16 +17,33 @@ export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:$PAT
 
 DIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)"
 VPN="$DIR/scripts/vpn.sh"
+MODE_SH="$DIR/scripts/vpn-mode.sh"
+
+# Текущий режим маршрутизации (читается без sudo из конфига)
+mode="full"
+grep -q '"final": "direct"' /etc/sing-box/config.json 2>/dev/null && mode="selective"
 
 if pgrep -x sing-box >/dev/null 2>&1; then
   cc="$(curl -fsS --max-time 4 https://ipinfo.io/country 2>/dev/null | tr -d '[:space:]')"
   ip="$(curl -fsS --max-time 4 https://ipinfo.io/ip 2>/dev/null | tr -d '[:space:]')"
   [ -z "$cc" ] && cc="??"
 
-  echo "🟢 ${cc} | color=#34c759"
+  if [ "$mode" = "selective" ]; then
+    echo "🟢 ${cc} 🎯 | color=#34c759"
+  else
+    echo "🟢 ${cc} | color=#34c759"
+  fi
   echo "---"
   echo "Туннель включён | color=#34c759"
   echo "IP: ${ip:-?}  ·  страна: ${cc}"
+  echo "---"
+  if [ "$mode" = "full" ]; then
+    echo "Режим: весь трафик 🌍"
+    echo "→ Переключить на «только сервисы» | bash=\"$MODE_SH\" param1=selective terminal=false refresh=true"
+  else
+    echo "Режим: только Claude/ChatGPT/YouTube/Telegram 🎯"
+    echo "→ Переключить на «весь трафик» | bash=\"$MODE_SH\" param1=full terminal=false refresh=true"
+  fi
   echo "---"
   echo "⛔ Выключить | bash=\"$VPN\" param1=off terminal=false refresh=true"
   echo "🔄 Перезапустить | bash=\"$VPN\" param1=restart terminal=false refresh=true"

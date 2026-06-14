@@ -74,9 +74,19 @@ validate_cfg() {
 }
 
 install_daemon() {
-  echo "[*] Устанавливаю конфиг и демон (нужен sudo)..."
+  echo "[*] Устанавливаю конфиги и демон (нужен sudo)..."
   sudo mkdir -p /etc/sing-box
-  sudo cp "$LOCAL_CFG" "$DEST_CFG"
+
+  # Два готовых режима маршрутизации (разница — поле route.final):
+  #   full      = весь трафик через Латвию (final: proxy)
+  #   selective = только сервисы через Латвию (final: direct)
+  sudo cp "$LOCAL_CFG" /etc/sing-box/config-full.json
+  sed 's/"final": "proxy"/"final": "direct"/' "$LOCAL_CFG" \
+    | sudo tee /etc/sing-box/config-selective.json >/dev/null
+
+  # По умолчанию активен полный туннель
+  sudo cp /etc/sing-box/config-full.json "$DEST_CFG"
+  sudo chmod 644 /etc/sing-box/config-full.json /etc/sing-box/config-selective.json "$DEST_CFG"
 
   # Рендерим plist с путями к бинарю и конфигу
   local tmp_plist
@@ -114,6 +124,10 @@ main() {
   echo "  4) Логи: tail -f /var/log/sing-box.err.log"
   echo
   echo "Снять демон (если нужно): sudo launchctl bootout system $DEST_PLIST"
+  echo
+  echo "Режим маршрутизации (по умолчанию — весь трафик):"
+  echo "  bash scripts/vpn-mode.sh selective   # только Claude/ChatGPT/YouTube/Telegram"
+  echo "  bash scripts/vpn-mode.sh full        # весь трафик"
 }
 
 main "$@"

@@ -34,8 +34,9 @@ bash scripts/install-macos-daemon.sh
 - **Авто-failover** — outbound `auto` (`urltest`) каждые ~3 минуты проверяет
   Reality и Hysteria2 и сам выбирает рабочий. Если одну схему придавили — Mac
   молча уходит на другую.
-- **DNS без утечек** — FakeIP + DoH (`https://1.1.1.1/dns-query`) через туннель.
+- **DNS без утечек** — DoH (DNS-over-HTTPS к `1.1.1.1`) через туннель.
   Провайдер не видит, какие домены вы открываете, и не может подменить DNS.
+  Российские домены резолвятся локально и идут напрямую.
 - **RU-исключение** — домены `.ru`/`.рф` и российские IP (`geoip-ru`) идут
   напрямую: банки, госуслуги, локальные сайты работают быстро и без блокировок
   «входа из-за рубежа».
@@ -93,7 +94,9 @@ sudo tee /etc/sudoers.d/singbox >/dev/null <<'EOF'
 ИМЯ ALL=(root) NOPASSWD: /bin/launchctl bootstrap system /Library/LaunchDaemons/com.user.singbox.plist, \
   /bin/launchctl bootout system /Library/LaunchDaemons/com.user.singbox.plist, \
   /bin/launchctl kickstart *com.user.singbox, /bin/launchctl kickstart -k system/com.user.singbox, \
-  /bin/launchctl enable system/com.user.singbox, /bin/launchctl print system/com.user.singbox
+  /bin/launchctl enable system/com.user.singbox, /bin/launchctl print system/com.user.singbox, \
+  /bin/cp /etc/sing-box/config-full.json /etc/sing-box/config.json, \
+  /bin/cp /etc/sing-box/config-selective.json /etc/sing-box/config.json
 EOF
 sudo chmod 440 /etc/sudoers.d/singbox
 ```
@@ -119,6 +122,36 @@ bash scripts/install-menubar.sh
 
 Альтернатива — GUI-клиент **Hiddify** (см. ниже): тоже включение/выключение
 кликом, но поднимается только после входа в систему.
+
+## Режимы маршрутизации: весь трафик ↔ только сервисы
+
+Доступно два режима (различаются одним полем в конфиге, переключаются мгновенно):
+
+- **Весь трафик** (`full`, по умолчанию) — через Латвию идёт всё, кроме
+  российских ресурсов.
+- **Только сервисы** (`selective`) — через Латвию идут только **Claude, ChatGPT,
+  YouTube и Telegram**, а весь остальной интернет — напрямую (быстрее, экономит
+  канал сервера, меньше «отсвечивает»).
+
+Переключение командой:
+```bash
+bash scripts/vpn-mode.sh selective   # только сервисы
+bash scripts/vpn-mode.sh full        # весь трафик
+bash scripts/vpn-mode.sh toggle      # переключить туда-обратно
+bash scripts/vpn-mode.sh status      # текущий режим
+```
+
+Или прямо из **строки меню**: в меню плагина SwiftBar есть пункт
+«→ Переключить на …». В режиме «только сервисы» рядом с флагом страны
+показывается значок 🎯.
+
+> Какие именно сервисы туннелируются, задаётся списком доменов в
+> `configs/singbox-client.template.json` (секция `route.rules`, правило с
+> `outbound: "proxy"`) + rule-set `geoip-telegram` для приложения Telegram.
+> Можно добавить свои домены и переустановить демон.
+
+> Переустановка демоном (`install-macos-daemon.sh`) сбрасывает режим на «весь
+> трафик». Переключение меню/скриптом требует sudoers без пароля (см. выше).
 
 ## Применить изменения конфига
 Поправь `configs/singbox-client.local.json` и переустанови:
