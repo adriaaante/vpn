@@ -86,7 +86,7 @@ install_daemon() {
   sed 's/"final": "proxy"/"final": "direct"/' "$LOCAL_CFG" \
     | sudo tee /etc/sing-box/config-selective.json >/dev/null
   # strict: берём full и УБИРАЕМ правила «RU -> direct», чтобы RU тоже шёл через туннель
-  python3 - "$LOCAL_CFG" | sudo tee /etc/sing-box/config-strict.json >/dev/null <<'PY'
+  python3 - "$LOCAL_CFG" <<'PY' | sudo tee /etc/sing-box/config-strict.json >/dev/null
 import json,sys
 d=json.load(open(sys.argv[1]))
 r=d.get("route",{})
