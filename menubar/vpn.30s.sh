@@ -75,6 +75,10 @@ except Exception: print("")' 2>/dev/null)"
 }
 
 if pgrep -x sing-box >/dev/null 2>&1; then
+  # ЧАСТАЯ дешёвая проверка связи через туннель (без лимитов): жив ли VPN на самом деле
+  online="no"
+  curl -fsS --max-time 4 -o /dev/null https://www.gstatic.com/generate_204 2>/dev/null && online="yes"
+
   read -r cc ip <<EOF
 $(geo)
 EOF
@@ -83,7 +87,12 @@ EOF
   smark=""; [ "$mode" = "selective" ] && smark=" 🎯"
   echo "🟢 ${cc}${smark} | color=#34c759"
   echo "---"
-  echo "Туннель включён | color=#34c759"
+  if [ "$online" = "yes" ]; then
+    echo "Туннель включён и на связи | color=#34c759"
+  else
+    echo "⚠️ Туннель НЕ отвечает — нет связи! | color=#ff3b30"
+    echo "→ Перезапустить туннель | bash=\"$VPN\" param1=restart terminal=false refresh=true"
+  fi
   echo "IP: ${ip:-?}  ·  страна: ${cc}"
   echo "---"
   if [ "$mode" = "full" ]; then
