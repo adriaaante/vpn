@@ -26,8 +26,9 @@ reapply_killswitch() {
 }
 
 server_ip() {
-  grep -o '"server": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/' \
-    | grep -Ev '^(1\.1\.1\.1|8\.8\.8\.8|127\.|::1)$' | head -1
+  grep -oE '"server": *"[0-9]{1,3}(\.[0-9]{1,3}){3}"' "$CFG" 2>/dev/null \
+    | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}' \
+    | grep -Ev '^(1\.1\.1\.1|8\.8\.8\.8|127\.|0\.)' | head -1
 }
 clash_ctrl() { local c; c="$(grep -o '"external_controller": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/')"; echo "${c:-127.0.0.1:9090}"; }
 clash_secret() { grep -o '"secret": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/'; }

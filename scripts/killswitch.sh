@@ -30,10 +30,11 @@ SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 busy() { bash "$SDIR/vpn-busy.sh" "$1" 2>/dev/null || true; }
 
 server_ip() {
-  # IP сервера из первого outbound с "server" (vless/hysteria2)
-  grep -o '"server": *"[^"]*"' "$CFG" 2>/dev/null \
-    | sed 's/.*"\([^"]*\)"/\1/' \
-    | grep -Ev '^(1\.1\.1\.1|8\.8\.8\.8|127\.|::1)$' \
+  # IP сервера (vless/hysteria2): берём ТОЛЬКО значения "server", похожие на IPv4,
+  # исключая DoH (1.1.1.1) и loopback. NB: НЕ хватать "server":"dns-local" из DNS.
+  grep -oE '"server": *"[0-9]{1,3}(\.[0-9]{1,3}){3}"' "$CFG" 2>/dev/null \
+    | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}' \
+    | grep -Ev '^(1\.1\.1\.1|8\.8\.8\.8|127\.|0\.)' \
     | head -1
 }
 
@@ -67,7 +68,8 @@ build_conf() {
 }
 
 load_pf() {
-  $SUDO pfctl -E -f "$PF_CONF" >/dev/null 2>&1 || $SUDO pfctl -e -f "$PF_CONF" >/dev/null 2>&1 || true
+  # -e -f (enable + load) надёжнее на macOS, чем -E -f; -E -f как запасной вариант
+  $SUDO pfctl -e -f "$PF_CONF" >/dev/null 2>&1 || $SUDO pfctl -E -f "$PF_CONF" >/dev/null 2>&1 || true
 }
 
 case "${1:-status}" in
