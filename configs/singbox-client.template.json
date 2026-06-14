@@ -130,5 +130,15 @@
     ],
     "final": "proxy",
     "auto_detect_interface": true
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "path": "/etc/sing-box/cache.db"
+    },
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",
+      "secret": "__CLASH_SECRET__"
+    }
   }
 }
