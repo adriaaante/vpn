@@ -78,16 +78,33 @@ install_daemon() {
   echo "[*] Устанавливаю конфиги и демон (нужен sudo)..."
   sudo mkdir -p /etc/sing-box
 
-  # Два готовых режима маршрутизации (разница — поле route.final):
-  #   full      = весь трафик через Латвию (final: proxy)
+  # Три готовых режима маршрутизации:
+  #   strict    = ВЕСЬ трафик через Латвию (даже RU) — максимально скрыто
+  #   full      = умный: зарубеж через Латвию, RU напрямую (final: proxy + RU->direct)
   #   selective = только сервисы через Латвию (final: direct)
   sudo cp "$LOCAL_CFG" /etc/sing-box/config-full.json
   sed 's/"final": "proxy"/"final": "direct"/' "$LOCAL_CFG" \
     | sudo tee /etc/sing-box/config-selective.json >/dev/null
+  # strict: берём full и УБИРАЕМ правила «RU -> direct», чтобы RU тоже шёл через туннель
+  python3 - "$LOCAL_CFG" | sudo tee /etc/sing-box/config-strict.json >/dev/null <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1]))
+r=d.get("route",{})
+def is_ru_direct(x):
+    if x.get("outbound")!="direct": return False
+    if x.get("rule_set")=="geoip-ru": return True
+    ds=x.get("domain_suffix")
+    if isinstance(ds,list) and any(s in (".ru",".рф") for s in ds): return True
+    return False
+r["rules"]=[x for x in r.get("rules",[]) if not is_ru_direct(x)]
+r["rule_set"]=[x for x in r.get("rule_set",[]) if x.get("tag")!="geoip-ru"]
+print(json.dumps(d,indent=2,ensure_ascii=False))
+PY
 
-  # По умолчанию активен полный туннель
+  # По умолчанию активен умный режим (full)
   sudo cp /etc/sing-box/config-full.json "$DEST_CFG"
-  sudo chmod 644 /etc/sing-box/config-full.json /etc/sing-box/config-selective.json "$DEST_CFG"
+  echo full | sudo tee /etc/sing-box/mode >/dev/null
+  sudo chmod 644 /etc/sing-box/config-full.json /etc/sing-box/config-selective.json /etc/sing-box/config-strict.json /etc/sing-box/mode "$DEST_CFG"
 
   # Самодостаточная копия killswitch + обёртка демона в /etc/sing-box
   # (чтобы kill-switch поднимался при загрузке независимо от расположения репозитория)

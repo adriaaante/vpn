@@ -4,7 +4,7 @@
 #
 #   vpn on | off | restart       включить / выключить / перезапустить
 #   vpn status                   полная диагностика (по умолчанию)
-#   vpn mode  [full|selective|toggle|status]   режим маршрутизации
+#   vpn mode  [strict|full|selective|status]   режим маршрутизации
 #   vpn proto [auto|reality|hysteria2|status|test]   выбор протокола
 #   vpn killswitch [on|off|status]             защита от утечки IP
 #   vpn help                     справка
@@ -74,8 +74,12 @@ full_status() {
   d="$(curl -fsS --max-time 3 -H "Authorization: Bearer $(clash_secret)" "http://$(clash_ctrl)/proxies/${actv}" 2>/dev/null | grep -o '"delay":[0-9]*' | tail -1 | sed 's/.*://')"
   [ -n "${sel:-}" ] && echo "  Протокол:     ${sel}${actv:+ → $actv}${d:+ · ${d} ms}"
 
-  # Режим
-  if grep -q '"final": "direct"' "$CFG" 2>/dev/null; then echo "  Режим:        🎯 только сервисы"; else echo "  Режим:        🌍 весь трафик"; fi
+  # Режим (из маркера)
+  case "$(cat /etc/sing-box/mode 2>/dev/null || echo full)" in
+    strict)    echo "  Режим:        🛡 всё через Латвию (скрыто)";;
+    selective) echo "  Режим:        🎯 только сервисы";;
+    *)         echo "  Режим:        🌍 умный (RU напрямую)";;
+  esac
 
   # Kill-switch
   if [ -f /etc/sing-box/killswitch.enabled ]; then echo "  Kill-switch:  🛡 включён"; else echo "  Kill-switch:  выключен"; fi

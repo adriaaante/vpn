@@ -48,8 +48,8 @@ ks_active="no"
 if sudo -n pfctl -s info 2>/dev/null | grep -q "Status: Enabled" && sudo -n pfctl -s rules 2>/dev/null | grep -q "block drop out all"; then ks_active="yes"; fi
 ks_state="off"; [ "$ks" = "on" ] && ks_state="fell"; { [ "$ks" = "on" ] && [ "$ks_active" = "yes" ]; } && ks_state="ok"
 
-# режим
-mode="full"; grep -q '"final": "direct"' "$CFG" 2>/dev/null && mode="selective"
+# режим (читаем маркер, который пишет vpn-mode.sh)
+mode="$(cat /etc/sing-box/mode 2>/dev/null || echo full)"
 
 # протокол + связь из локального Clash API
 nowof() { api "proxies/$1" | python3 -c 'import sys,json
@@ -83,13 +83,14 @@ if pgrep -x sing-box >/dev/null 2>&1; then
   echo "🌍 Проверить выходной IP сейчас | bash=\"$0\" param1=checkip terminal=false refresh=true"
   [ -s "$IPCACHE" ] && echo "   последняя проверка: ${cc} · ${ipx:-?} · в ${ipt:-?}"
   echo "---"
-  if [ "$mode" = "full" ]; then
-    echo "Режим: весь трафик 🌍"
-    echo "→ Переключить на «только сервисы» | bash=\"$MODE_SH\" param1=selective terminal=false refresh=true"
-  else
-    echo "Режим: только Claude/ChatGPT/YouTube/Telegram 🎯"
-    echo "→ Переключить на «весь трафик» | bash=\"$MODE_SH\" param1=full terminal=false refresh=true"
-  fi
+  case "$mode" in
+    strict)    echo "Режим: всё через Латвию 🛡 (максимально скрыто)";;
+    selective) echo "Режим: только Claude/ChatGPT/YouTube/Telegram 🎯";;
+    *)         echo "Режим: умный 🌍 (зарубеж→Латвия, RU напрямую)";;
+  esac
+  [ "$mode" != "strict" ]    && echo "→ Всё через Латвию (скрытно) | bash=\"$MODE_SH\" param1=strict terminal=false refresh=true"
+  [ "$mode" != "full" ]      && echo "→ Умный (RU напрямую) | bash=\"$MODE_SH\" param1=full terminal=false refresh=true"
+  [ "$mode" != "selective" ] && echo "→ Только сервисы | bash=\"$MODE_SH\" param1=selective terminal=false refresh=true"
   echo "---"
   dtxt=""; { [ -n "$d" ] && [ "$d" != "0" ]; } && dtxt=" · ${d} ms"
   echo "Протокол: $(fname "$actv")${dtxt}"
