@@ -23,7 +23,10 @@ PF_CONF="/etc/sing-box/killswitch.pf.conf"
 MARKER="/etc/sing-box/killswitch.enabled"
 ANCHOR="singbox_killswitch"
 RU_CIDR="/etc/sing-box/ru-cidrs.txt"
-RU_URL="https://raw.githubusercontent.com/herrbischoff/country-ip-blocks/master/ipv4/ru.cidr"
+RU_URLS=(
+  "https://www.ipdeny.com/ipblocks/data/aggregated/ru-aggregated.zone"
+  "https://raw.githubusercontent.com/ipverse/rir-ip/master/country/ru/ipv4-aggregated.txt"
+)
 
 # Под root (запуск из демона) sudo не нужен
 SUDO=""; [[ "$(id -u)" -ne 0 ]] && SUDO="sudo"
@@ -32,15 +35,19 @@ SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 busy() { bash "$SDIR/vpn-busy.sh" "$1" 2>/dev/null || true; }
 
 # Список российских IP-диапазонов (чтобы RU-сайты работали напрямую при kill-switch).
-# Обновляем не чаще раза в неделю. Если не скачался — RU просто пойдёт как раньше.
+# Обновляем не чаще раза в неделю. Устойчиво к ошибкам: если не скачался — не падаем,
+# RU просто пойдёт как раньше. НЕ должно ломать сам kill-switch.
 ensure_ru_list() {
   local age=999999
   [[ -f "$RU_CIDR" ]] && age=$(( $(date +%s) - $(stat -f %m "$RU_CIDR" 2>/dev/null || echo 0) ))
-  if [[ ! -s "$RU_CIDR" || "$age" -gt 604800 ]]; then
-    local data
-    data="$(curl -fsSL --max-time 25 "$RU_URL" 2>/dev/null | grep -E '^[0-9]+\.[0-9]')"
-    [[ -n "$data" ]] && printf '%s\n' "$data" | $SUDO tee "$RU_CIDR" >/dev/null
-  fi
+  if [[ -s "$RU_CIDR" && "$age" -le 604800 ]]; then return 0; fi
+  local u data=""
+  for u in "${RU_URLS[@]}"; do
+    data="$(curl -fsSL --max-time 25 "$u" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/' || true)"
+    [[ -n "$data" ]] && break
+  done
+  [[ -n "$data" ]] && printf '%s\n' "$data" | $SUDO tee "$RU_CIDR" >/dev/null 2>&1 || true
+  return 0
 }
 
 server_ip() {
