@@ -12,7 +12,6 @@ credentials.txt
 *.pf.conf
 killswitch.enabled
 cache.db
-netmap
 
 # Прочее
 .DS_Store

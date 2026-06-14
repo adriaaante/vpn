@@ -16,7 +16,7 @@ git clone <этот-репозиторий> vpn && cd vpn
 bash scripts/install-all.sh
 ```
 Ставит сразу всё: демон + sudoers без пароля + строку меню + watcher
-(failover/health) + авто-режим по сети + алиас `vpn`, и спрашивает про
+(failover/health) + алиас `vpn`, и спрашивает про
 kill-switch. В конце печатает диагностику. Дальше всё управляется командой `vpn`
 или иконкой в строке меню.
 
@@ -243,27 +243,6 @@ kill-switch активен, в меню видно предупреждение,
 >
 > **Captive-portal** (отель/кафе с веб-логином): под kill-switch страница входа
 > не откроется. Временно `killswitch off`, залогинься в Wi-Fi, затем снова `on`.
-
-## Авто-режим по сети (дом ↔ чужие сети)
-
-Дома — «весь трафик», в мобильной точке/на работе — «только сервисы».
-Сеть определяется по **MAC шлюза** (надёжнее SSID, который свежие macOS скрывают).
-
-```bash
-bash scripts/install-autonet.sh           # включить авто-режим (LaunchAgent)
-bash scripts/vpn-autonet.sh whoami        # узнать ID текущей сети
-```
-
-Затем впиши домашнюю сеть в `~/.config/vpn/netmap` (создаётся из
-`configs/netmap.example`):
-```
-a4:b1:c1:d2:e3:f4   full        # MAC домашнего роутера → весь трафик
-default             selective   # все прочие сети → только сервисы
-```
-
-Агент ловит смену сети (watch на `resolv.conf`) и сам выставляет режим; смена
-видна в меню по значку 🌍/🎯. Снять:
-`launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.user.singbox-autonet.plist`.
 
 ## Применить изменения конфига
 Поправь `configs/singbox-client.local.json` и переустанови:

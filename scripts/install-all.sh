@@ -2,7 +2,7 @@
 #
 # install-all.sh — установка всего одной командой на macOS:
 #   sing-box демон (автозапуск) + sudoers без пароля + строка меню +
-#   watcher (failover/health) + авто-режим по сети + алиас `vpn`.
+#   watcher (failover/health) + алиас `vpn`.
 #
 # Запуск:
 #   bash scripts/install-all.sh
@@ -55,15 +55,11 @@ echo; echo "▶ Шаг 3/6: строка меню (SwiftBar)"
 bash "$DIR/scripts/install-menubar.sh"
 
 # 4. Watcher (failover-уведомления + health-check)
-echo; echo "▶ Шаг 4/6: watcher (failover + health)"
+echo; echo "▶ Шаг 4/5: watcher (failover + health)"
 bash "$DIR/scripts/install-watcher.sh"
 
-# 5. Авто-режим по сети
-echo; echo "▶ Шаг 5/6: авто-режим по сети"
-bash "$DIR/scripts/install-autonet.sh"
-
-# 6. Алиас `vpn` + опциональный kill-switch
-echo; echo "▶ Шаг 6/6: финальные штрихи"
+# 5. Алиас `vpn` + опциональный kill-switch
+echo; echo "▶ Шаг 5/5: финальные штрихи"
 SHELL_RC="$HOME/.zshrc"
 if ! grep -q 'alias vpn=' "$SHELL_RC" 2>/dev/null; then
   echo "alias vpn=\"bash $DIR/scripts/vpn.sh\"" >> "$SHELL_RC"
@@ -82,5 +78,4 @@ echo "  Готово! Текущее состояние:"
 echo "════════════════════════════════════════════"
 bash "$DIR/scripts/vpn.sh" status || true
 echo
-echo "Команды: vpn on|off|status|mode|proto|killswitch|net  (или иконка в строке меню)"
-echo "Домашнюю сеть для авто-режима добавь: vpn net whoami → впиши в ~/.config/vpn/netmap"
+echo "Команды: vpn on|off|status|mode|proto|killswitch  (или иконка в строке меню)"

@@ -37,7 +37,7 @@ REALITY_PUBLIC_KEY, REALITY_SHORT_ID, HYSTERIA2_PASSWORD).
 git clone -b <branch> https://github.com/<owner>/vpn ~/vpn
 cd ~/vpn
 bash scripts/install-macos-daemon.sh   # ставит туннель, спросит 6 значений
-bash scripts/install-extras.sh         # тулбар + watcher + autonet + alias
+bash scripts/install-extras.sh         # тулбар + watcher + alias
 ```
 
 ## Быстрая диагностика
@@ -50,7 +50,7 @@ tail -n 40 /var/log/sing-box.err.log   # логи клиента (Mac)
 ## Где что в репозитории
 - `scripts/` — установка и управление (`setup-singbox-latvia.sh`,
   `install-macos-daemon.sh`, `install-extras.sh`, `vpn.sh`, `vpn-mode.sh`,
-  `vpn-proto.sh`, `killswitch.sh`, `vpn-autonet.sh`, `vpn-watch.sh`, ...).
+  `vpn-proto.sh`, `killswitch.sh`, `vpn-watch.sh`, ...).
 - `configs/` — шаблоны конфигов sing-box (сервер/клиент).
 - `launchd/` — plist'ы демона/агентов.
 - `menubar/` — плагин SwiftBar.

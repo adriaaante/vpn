@@ -33,7 +33,6 @@ ChatGPT, YouTube, Telegram и остальной зарубежный интер
 - **Автозапуск**: sing-box запущен как `LaunchDaemon` (`RunAtLoad` + `KeepAlive`).
 - **Два режима** одним кликом: *весь трафик* ↔ *только Claude/ChatGPT/YouTube/Telegram*.
 - **Kill-switch** (pf): при падении туннеля интернет блокируется — реальный IP не утекает.
-- **Авто-режим по сети**: дома — весь трафик, в чужих сетях — только сервисы.
 
 ## Быстрый старт
 
@@ -45,7 +44,7 @@ ChatGPT, YouTube, Telegram и остальной зарубежный интер
    Скрипт всё установит, сгенерирует ключи и **напечатает значения для клиента**.
    Подробно: [`docs/server-setup-latvia.md`](docs/server-setup-latvia.md).
 
-2. **MacBook.** Одна команда ставит всё (демон + меню + watcher + авто-режим +
+2. **MacBook.** Одна команда ставит всё (демон + меню + watcher +
    sudoers без пароля + алиас `vpn`):
    ```bash
    bash scripts/install-all.sh
@@ -61,11 +60,10 @@ ChatGPT, YouTube, Telegram и остальной зарубежный интер
 ```
 vpn on | off | restart     включить / выключить / перезапустить
 vpn status                 полная диагностика (туннель, IP, протокол+пинг, режим,
-                           kill-switch, авто-режим, доступность сервера)
+                           kill-switch, доступность сервера)
 vpn mode  selective|full   режим маршрутизации
 vpn proto reality|hysteria2|auto   выбор протокола
 vpn killswitch on|off      защита от утечки IP
-vpn net   whoami           показать текущую сеть (для авто-режима)
 ```
 
 Всё то же доступно кликом из иконки в строке меню.

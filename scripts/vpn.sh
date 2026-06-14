@@ -7,7 +7,6 @@
 #   vpn mode  [full|selective|toggle|status]   режим маршрутизации
 #   vpn proto [auto|reality|hysteria2|status|test]   выбор протокола
 #   vpn killswitch [on|off|status]             защита от утечки IP
-#   vpn net   [whoami]           авто-режим по сети / показать сеть
 #   vpn help                     справка
 #
 # Удобный алиас (добавь в ~/.zshrc):
@@ -74,9 +73,6 @@ full_status() {
   # Kill-switch
   if [ -f /etc/sing-box/killswitch.enabled ]; then echo "  Kill-switch:  🛡 включён"; else echo "  Kill-switch:  выключен"; fi
 
-  # Авто-режим
-  if launchctl print "gui/$(id -u)/com.user.singbox-autonet" >/dev/null 2>&1; then echo "  Авто-режим:   🧭 включён"; else echo "  Авто-режим:   выключен"; fi
-
   # Watcher (failover/health)
   if launchctl print "gui/$(id -u)/com.user.singbox-watch" >/dev/null 2>&1; then echo "  Watcher:      ✓ работает (failover + health)"; else echo "  Watcher:      выключен"; fi
 
@@ -115,9 +111,8 @@ case "$cmd" in
   mode)       bash "$DIR/vpn-mode.sh" "$@" ;;
   proto)      bash "$DIR/vpn-proto.sh" "$@" ;;
   killswitch|ks) bash "$DIR/killswitch.sh" "$@" ;;
-  net)        bash "$DIR/vpn-autonet.sh" "$@" ;;
   help|-h|--help)
-    sed -n '3,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     ;;
   *)
     echo "Неизвестная команда: $cmd"; echo "vpn help — список команд"; exit 1

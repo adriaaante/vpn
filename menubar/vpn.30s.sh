@@ -20,13 +20,10 @@ VPN="$DIR/scripts/vpn.sh"
 MODE_SH="$DIR/scripts/vpn-mode.sh"
 PROTO_SH="$DIR/scripts/vpn-proto.sh"
 KS_SH="$DIR/scripts/killswitch.sh"
-AUTONET_SH="$DIR/scripts/vpn-autonet.sh"
 CFG="/etc/sing-box/config.json"
 
-# Состояние kill-switch и авто-режима (без sudo)
+# Состояние kill-switch (без sudo)
 ks="off"; [ -f /etc/sing-box/killswitch.enabled ] && ks="on"
-autonet="off"
-launchctl print "gui/$(id -u)/com.user.singbox-autonet" >/dev/null 2>&1 && autonet="on"
 
 # Текущий режим маршрутизации (читается без sudo из конфига)
 mode="full"
@@ -97,11 +94,6 @@ if pgrep -x sing-box >/dev/null 2>&1; then
   else
     echo "🛡 Kill-switch: выключен"
     echo "→ Включить kill-switch (защита от утечки IP) | bash=\"$KS_SH\" param1=on terminal=false refresh=true"
-  fi
-  if [ "$autonet" = "on" ]; then
-    echo "🧭 Авто-режим по сети: включён"
-  else
-    echo "🧭 Авто-режим по сети: выключен (см. install-autonet.sh)"
   fi
   echo "---"
   echo "⛔ Выключить | bash=\"$VPN\" param1=off terminal=false refresh=true"

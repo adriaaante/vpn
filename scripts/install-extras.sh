@@ -4,7 +4,6 @@
 #   - sudoers без пароля (чтобы кнопки в меню работали бесшумно)
 #   - строка меню (SwiftBar-плагин)
 #   - watcher (уведомления о failover + health-check + актуализация kill-switch)
-#   - авто-режим по сети
 #   - алиас `vpn`
 #
 # Запуск (после того как туннель уже поднят install-macos-daemon.sh):
@@ -18,7 +17,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 USER_NAME="$(id -un)"
 
 echo "════════════════════════════════════════════"
-echo "  Установка удобств (тулбар, watcher, авто-режим)"
+echo "  Установка удобств (тулбар, watcher)"
 echo "════════════════════════════════════════════"
 
 # 1. sudoers без пароля — для бесшумных переключений из меню
@@ -55,9 +54,6 @@ bash "$DIR/scripts/install-menubar.sh"
 echo; echo "▶ watcher (failover + health)"
 bash "$DIR/scripts/install-watcher.sh"
 
-# 4. Авто-режим по сети — НЕ ставим по умолчанию (по умолчанию хотим стабильный
-#    full без сюрпризов). Включается явно по желанию: bash scripts/install-autonet.sh
-echo; echo "▶ авто-режим по сети: пропущен (опционально, ставится отдельно)"
 
 # 4b. Kill-switch включён по умолчанию (защита от утечки IP; fail-closed)
 echo; echo "▶ kill-switch (защита от утечки IP)"
@@ -79,5 +75,4 @@ echo
 echo "════════════════════════════════════════════"
 echo "  Готово! В строке меню появилась иконка 🟢."
 echo "════════════════════════════════════════════"
-echo "Управление: vpn on|off|status|mode|proto|killswitch|net  (или иконка в меню)"
-echo "Домашнюю сеть для авто-режима: vpn net whoami → впиши в ~/.config/vpn/netmap"
+echo "Управление: vpn on|off|status|mode|proto|killswitch  (или иконка в меню)"
