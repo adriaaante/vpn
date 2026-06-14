@@ -22,12 +22,26 @@ CFG="/etc/sing-box/config.json"
 PF_CONF="/etc/sing-box/killswitch.pf.conf"
 MARKER="/etc/sing-box/killswitch.enabled"
 ANCHOR="singbox_killswitch"
+RU_CIDR="/etc/sing-box/ru-cidrs.txt"
+RU_URL="https://raw.githubusercontent.com/herrbischoff/country-ip-blocks/master/ipv4/ru.cidr"
 
 # Под root (запуск из демона) sudo не нужен
 SUDO=""; [[ "$(id -u)" -ne 0 ]] && SUDO="sudo"
 
 SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 busy() { bash "$SDIR/vpn-busy.sh" "$1" 2>/dev/null || true; }
+
+# Список российских IP-диапазонов (чтобы RU-сайты работали напрямую при kill-switch).
+# Обновляем не чаще раза в неделю. Если не скачался — RU просто пойдёт как раньше.
+ensure_ru_list() {
+  local age=999999
+  [[ -f "$RU_CIDR" ]] && age=$(( $(date +%s) - $(stat -f %m "$RU_CIDR" 2>/dev/null || echo 0) ))
+  if [[ ! -s "$RU_CIDR" || "$age" -gt 604800 ]]; then
+    local data
+    data="$(curl -fsSL --max-time 25 "$RU_URL" 2>/dev/null | grep -E '^[0-9]+\.[0-9]')"
+    [[ -n "$data" ]] && printf '%s\n' "$data" | $SUDO tee "$RU_CIDR" >/dev/null
+  fi
+}
 
 server_ip() {
   # IP сервера (vless/hysteria2): берём ТОЛЬКО значения "server", похожие на IPv4,
@@ -47,9 +61,17 @@ build_conf() {
   if [[ -z "$ip" ]]; then
     echo "[!] Не нашёл IP сервера в $CFG — сначала установи клиент (install-macos-daemon.sh)."; exit 1
   fi
+  ensure_ru_list
+  local ru_table="" ru_pass=""
+  if [[ -s "$RU_CIDR" ]]; then
+    ru_table="table <ru> persist file \"$RU_CIDR\""
+    ru_pass="pass out quick to <ru>"
+  fi
 
   {
     echo "# Авто-сгенерировано killswitch.sh — не редактировать вручную."
+    # В pf порядок: таблицы → опции → правила.
+    [[ -n "$ru_table" ]] && echo "$ru_table"
     echo "set block-policy drop"
     echo "set skip on lo0"
     echo "block drop out all"
@@ -63,9 +85,9 @@ build_conf() {
     # переподключение к серверу
     echo "pass out quick proto tcp to $ip port 443"
     echo "pass out quick proto udp to $ip port 443"
-    # Локальные сети (LAN/принтеры/роутер + DNS роутера). DNS НАРУЖУ не пропускаем:
-    # весь DNS идёт через DoH в туннеле, а при падении туннеля прямой DNS к провайдеру
-    # запрещён (иначе провайдер видел бы, какие сайты ты резолвишь — утечка).
+    # Российские IP — напрямую (RU-сайты работают при kill-switch; родной IP).
+    [[ -n "$ru_pass" ]] && echo "$ru_pass"
+    # Локальные сети (LAN/принтеры/роутер). DNS НАРУЖУ не пропускаем (всё через DoH в туннеле).
     echo "pass out quick to { 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 224.0.0.0/4 }"
     # DHCP
     echo "pass out quick proto udp from any port 68 to any port 67"

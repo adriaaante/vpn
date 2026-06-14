@@ -31,6 +31,7 @@ $USER_NAME ALL=(root) NOPASSWD: /bin/launchctl bootstrap system /Library/LaunchD
   /bin/cp /etc/sing-box/config-full.json /etc/sing-box/config.json, \\
   /bin/cp /etc/sing-box/config-selective.json /etc/sing-box/config.json, \\
   /usr/bin/tee /etc/sing-box/killswitch.pf.conf, \\
+  /usr/bin/tee /etc/sing-box/ru-cidrs.txt, \\
   /sbin/pfctl -E -f /etc/sing-box/killswitch.pf.conf, \\
   /sbin/pfctl -e -f /etc/sing-box/killswitch.pf.conf, \\
   /sbin/pfctl -d, \\
