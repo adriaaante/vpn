@@ -60,9 +60,24 @@ if [ -f /tmp/vpn-busy ]; then
   exit 0
 fi
 
+# Страну/IP берём из кэша (обновляем у ipinfo не чаще раза в 5 мин, чтобы не
+# нагружать и не упираться в лимит ipinfo). Проверка kill-switch — локальная, частая.
+geo() {
+  local f="/tmp/vpn-geo-cache" age=999999 now line
+  now="$(date +%s)"
+  [ -f "$f" ] && age=$(( now - $(stat -f %m "$f" 2>/dev/null || echo 0) ))
+  if [ "$age" -lt 300 ] && [ -s "$f" ]; then cat "$f"; return; fi
+  line="$(curl -fsS --max-time 4 https://ipinfo.io/json 2>/dev/null | python3 -c 'import sys,json
+try:
+ d=json.load(sys.stdin); print(d.get("country","")+" "+d.get("ip",""))
+except Exception: print("")' 2>/dev/null)"
+  if [ -n "${line// /}" ]; then printf '%s\n' "$line" > "$f"; printf '%s' "$line"; else cat "$f" 2>/dev/null; fi
+}
+
 if pgrep -x sing-box >/dev/null 2>&1; then
-  cc="$(curl -fsS --max-time 4 https://ipinfo.io/country 2>/dev/null | tr -d '[:space:]')"
-  ip="$(curl -fsS --max-time 4 https://ipinfo.io/ip 2>/dev/null | tr -d '[:space:]')"
+  read -r cc ip <<EOF
+$(geo)
+EOF
   [ -z "$cc" ] && cc="??"
 
   smark=""; [ "$mode" = "selective" ] && smark=" 🎯"
