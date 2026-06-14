@@ -63,14 +63,48 @@ bash scripts/install-macos-daemon.sh
 tail -f /var/log/sing-box.err.log
 ```
 
-## Управление
+## Включение / выключение по желанию
+
+Туннель включается сам при загрузке, но его легко переключать вручную короткой
+командой `scripts/vpn.sh`:
 
 ```bash
-# выключить туннель
-sudo launchctl bootout system /Library/LaunchDaemons/com.user.singbox.plist
-# включить снова
-sudo launchctl bootstrap system /Library/LaunchDaemons/com.user.singbox.plist
-# применить изменения конфига: правишь configs/singbox-client.local.json и заново:
+bash scripts/vpn.sh on        # включить
+bash scripts/vpn.sh off       # выключить (вернуться к прямому интернету)
+bash scripts/vpn.sh restart   # перезапустить (например, после правки конфига)
+bash scripts/vpn.sh status    # состояние + текущий внешний IP
+```
+
+Чтобы было совсем удобно, добавь алиас в `~/.zshrc` (один раз):
+```bash
+echo 'alias vpn="bash $HOME/vpn/scripts/vpn.sh"' >> ~/.zshrc && source ~/.zshrc
+```
+Дальше просто: `vpn on`, `vpn off`, `vpn status`.
+
+> «Выключить» означает выгрузить демон — до следующей перезагрузки туннель
+> подниматься не будет. После перезагрузки он снова включится автоматически
+> (если только не отключить автозапуск: `sudo launchctl disable system/com.user.singbox`).
+
+### Переключение без ввода пароля (по желанию)
+Команды управления демоном требуют `sudo`. Чтобы `vpn on/off` не спрашивал
+пароль, добавь правило sudoers (замени `ИМЯ` на свой логин):
+```bash
+sudo tee /etc/sudoers.d/singbox >/dev/null <<'EOF'
+ИМЯ ALL=(root) NOPASSWD: /bin/launchctl bootstrap system /Library/LaunchDaemons/com.user.singbox.plist, \
+  /bin/launchctl bootout system /Library/LaunchDaemons/com.user.singbox.plist, \
+  /bin/launchctl kickstart *com.user.singbox, /bin/launchctl kickstart -k system/com.user.singbox, \
+  /bin/launchctl enable system/com.user.singbox, /bin/launchctl print system/com.user.singbox
+EOF
+sudo chmod 440 /etc/sudoers.d/singbox
+```
+
+### Вариант с кликом в строке меню
+Если хочется кнопку-переключатель в menu bar вместо команды — используй GUI-клиент
+**Hiddify** (см. ниже): включение/выключение одним кликом по иконке.
+
+## Применить изменения конфига
+Поправь `configs/singbox-client.local.json` и переустанови:
+```bash
 bash scripts/install-macos-daemon.sh
 ```
 
