@@ -61,6 +61,10 @@ build_conf() {
     # переподключение к серверу
     echo "pass out quick proto tcp to $ip port 443"
     echo "pass out quick proto udp to $ip port 443"
+    # DNS — нужен для переподключения (резолв проверочного URL/серверов). Утечки
+    # IP нет (это только DNS-запросы); основной DNS всё равно идёт через DoH в туннеле.
+    echo "pass out quick proto udp to any port 53"
+    echo "pass out quick proto tcp to any port 53"
     # локальные сети (LAN/принтеры/роутер/DHCP/DNS роутера)
     echo "pass out quick to { 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 224.0.0.0/4 }"
     # DHCP
