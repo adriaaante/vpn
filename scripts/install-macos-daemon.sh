@@ -132,8 +132,8 @@ RUN
   # размер на диске остаётся ограниченным.
   sudo tee /etc/newsyslog.d/com.user.singbox.conf >/dev/null <<'NEWSYSLOG'
 # logfilename                 [owner:group]  mode  count  size   when  flags
-/var/log/sing-box.err.log     root:wheel     644   5      5120   *     NZ
-/var/log/sing-box.out.log     root:wheel     644   5      5120   *     NZ
+/var/log/sing-box.err.log     root:wheel     644   1      5120   *     NZ
+/var/log/sing-box.out.log     root:wheel     644   1      5120   *     NZ
 NEWSYSLOG
   sudo newsyslog -f /etc/newsyslog.d/com.user.singbox.conf >/dev/null 2>&1 || true
 
