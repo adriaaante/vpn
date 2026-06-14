@@ -20,6 +20,7 @@ CTRL="${CTRL:-127.0.0.1:9090}"
 
 SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 busy() { bash "$SDIR/vpn-busy.sh" "$1" 2>/dev/null || true; }
+trap 'busy end' EXIT  # никогда не оставлять залипший спиннер
 
 api() { curl -fsS -H "Authorization: Bearer $SECRET" "$@"; }
 now_of() {  # текущий "now" для указанного селектора/urltest

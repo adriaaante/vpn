@@ -23,6 +23,9 @@ current() { cat "$MARK" 2>/dev/null || echo unknown; }
 reload() { sudo launchctl kickstart -k "system/$LABEL" 2>/dev/null || true; }
 SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 busy() { bash "$SDIR/vpn-busy.sh" "$1" 2>/dev/null || true; }
+# Подстраховка: при любой ошибке/прерывании снять спиннер, чтобы меню не залипло
+# на «⏳ Применяю…». busy end идемпотентен (просто удаляет /tmp/vpn-busy).
+trap 'busy end' EXIT
 
 apply() {  # apply <mode> <config-file> <message>
   [[ -f "$SBDIR/$2" ]] || { echo "Нет $SBDIR/$2 — запусти install-macos-daemon.sh"; exit 1; }
