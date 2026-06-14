@@ -55,9 +55,9 @@ bash "$DIR/scripts/install-menubar.sh"
 echo; echo "▶ watcher (failover + health)"
 bash "$DIR/scripts/install-watcher.sh"
 
-# 4. Авто-режим по сети
-echo; echo "▶ авто-режим по сети"
-bash "$DIR/scripts/install-autonet.sh"
+# 4. Авто-режим по сети — НЕ ставим по умолчанию (по умолчанию хотим стабильный
+#    full без сюрпризов). Включается явно по желанию: bash scripts/install-autonet.sh
+echo; echo "▶ авто-режим по сети: пропущен (опционально, ставится отдельно)"
 
 # 4b. Kill-switch включён по умолчанию (защита от утечки IP; fail-closed)
 echo; echo "▶ kill-switch (защита от утечки IP)"
