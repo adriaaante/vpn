@@ -40,6 +40,12 @@ case "$cmd" in
       echo "Реально активен (auto): $(now_of auto)"
     fi
     ;;
+  test)
+    sel="$(now_of proxy)"; target="$sel"
+    [[ "$sel" == "auto" ]] && target="$(now_of auto)"
+    d="$(api "http://$CTRL/proxies/$target/delay?timeout=3000&url=https://www.gstatic.com/generate_204" 2>/dev/null | grep -o '"delay":[0-9]*' | sed 's/.*://')"
+    echo "Пинг $target: ${d:-таймаут} ms"
+    ;;
   *)
-    echo "Использование: vpn-proto auto|reality|hysteria2|status"; exit 1 ;;
+    echo "Использование: vpn-proto auto|reality|hysteria2|status|test"; exit 1 ;;
 esac

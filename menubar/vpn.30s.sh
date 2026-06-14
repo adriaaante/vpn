@@ -30,6 +30,7 @@ CTRL="$(grep -o '"external_controller": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*
 SECRET="$(grep -o '"secret": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/')"
 CTRL="${CTRL:-127.0.0.1:9090}"
 proto_now() { curl -fsS --max-time 3 -H "Authorization: Bearer $SECRET" "http://$CTRL/proxies/$1" 2>/dev/null | grep -o '"now":"[^"]*"' | head -1 | sed 's/.*:"//;s/"//'; }
+proto_delay() { curl -fsS --max-time 3 -H "Authorization: Bearer $SECRET" "http://$CTRL/proxies/$1" 2>/dev/null | grep -o '"delay":[0-9]*' | tail -1 | sed 's/.*://'; }
 mark() { [ "$1" = "$2" ] && printf ' ✓' || printf ''; }
 
 if pgrep -x sing-box >/dev/null 2>&1; then
@@ -55,15 +56,18 @@ if pgrep -x sing-box >/dev/null 2>&1; then
   fi
   echo "---"
   sel="$(proto_now proxy)"
+  if [ "$sel" = "auto" ]; then actv="$(proto_now auto)"; else actv="$sel"; fi
+  d="$(proto_delay "$actv")"
+  dtxt=""; { [ -n "$d" ] && [ "$d" != "0" ]; } && dtxt=" · ${d} ms"
   if [ "$sel" = "auto" ]; then
-    actv="$(proto_now auto)"
-    echo "Протокол: авто → ${actv:-?}"
+    echo "Протокол: авто → ${actv:-?}${dtxt}"
   else
-    echo "Протокол: ${sel:-?}"
+    echo "Протокол: ${actv:-?}${dtxt}"
   fi
   echo "--Авто (выбирает сам)$(mark "$sel" auto) | bash=\"$PROTO_SH\" param1=auto terminal=false refresh=true"
   echo "--VLESS+Reality (TCP)$(mark "$sel" vless-reality) | bash=\"$PROTO_SH\" param1=reality terminal=false refresh=true"
   echo "--Hysteria2 (UDP)$(mark "$sel" hysteria2) | bash=\"$PROTO_SH\" param1=hysteria2 terminal=false refresh=true"
+  echo "--🚀 Проверить пинг сейчас | bash=\"$PROTO_SH\" param1=test terminal=false refresh=true"
   echo "---"
   echo "⛔ Выключить | bash=\"$VPN\" param1=off terminal=false refresh=true"
   echo "🔄 Перезапустить | bash=\"$VPN\" param1=restart terminal=false refresh=true"

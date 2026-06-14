@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent (уровень пользователя) для авто-уведомлений о смене протокола.
+  Кладётся в ~/Library/LaunchAgents/com.user.singbox-watch.plist.
+  Запускается раз в 20 секунд и при входе пользователя.
+  __WATCH_SH__ подставляет scripts/install-watcher.sh.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.singbox-watch</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__WATCH_SH__</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StartInterval</key>
+    <integer>20</integer>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/singbox-watch.err.log</string>
+</dict>
+</plist>
