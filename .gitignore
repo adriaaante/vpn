@@ -1,0 +1,13 @@
+# Локальные конфиги с реальными ключами/секретами — НИКОГДА не коммитим
+*.local.json
+configs/*.local.json
+secrets/
+credentials.txt
+
+# Сертификаты/ключи
+*.pem
+*.key
+
+# Прочее
+.DS_Store
+*.log

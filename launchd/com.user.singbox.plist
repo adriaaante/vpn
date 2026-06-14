@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchDaemon для sing-box на macOS.
+  Кладётся в /Library/LaunchDaemons/com.user.singbox.plist (root:wheel, 644).
+  RunAtLoad + KeepAlive => поднимается при загрузке (до входа в систему) и
+  сам перезапускается после сна/сбоя. Это и есть "открыл Mac -> уже работает".
+
+  ВАЖНО: __SINGBOX_BIN__ и __CONFIG_PATH__ подставляет install-macos-daemon.sh
+  (Apple Silicon обычно /opt/homebrew/bin/sing-box; Intel /usr/local/bin/sing-box).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.singbox</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__SINGBOX_BIN__</string>
+        <string>run</string>
+        <string>-c</string>
+        <string>__CONFIG_PATH__</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>/var/log/sing-box.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/var/log/sing-box.err.log</string>
+</dict>
+</plist>
