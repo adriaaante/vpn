@@ -96,7 +96,13 @@ sudo tee /etc/sudoers.d/singbox >/dev/null <<'EOF'
   /bin/launchctl kickstart *com.user.singbox, /bin/launchctl kickstart -k system/com.user.singbox, \
   /bin/launchctl enable system/com.user.singbox, /bin/launchctl print system/com.user.singbox, \
   /bin/cp /etc/sing-box/config-full.json /etc/sing-box/config.json, \
-  /bin/cp /etc/sing-box/config-selective.json /etc/sing-box/config.json
+  /bin/cp /etc/sing-box/config-selective.json /etc/sing-box/config.json, \
+  /usr/bin/tee /etc/sing-box/killswitch.pf.conf, \
+  /sbin/pfctl -E -f /etc/sing-box/killswitch.pf.conf, \
+  /sbin/pfctl -e -f /etc/sing-box/killswitch.pf.conf, \
+  /sbin/pfctl -d, \
+  /usr/bin/touch /etc/sing-box/killswitch.enabled, \
+  /bin/rm -f /etc/sing-box/killswitch.enabled
 EOF
 sudo chmod 440 /etc/sudoers.d/singbox
 ```
@@ -187,6 +193,53 @@ sudo. Снять: `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.use
 > Это работает без пароля, потому что Clash API слушает только локально
 > (`127.0.0.1`) и защищён секретом, который установщик генерирует автоматически и
 > кладёт в конфиг.
+
+## Kill-switch (защита от утечки реального IP)
+
+Если туннель упал или выключен, обычно трафик пошёл бы напрямую — и реальный IP
+«засветился». Kill-switch через штатный фаервол **pf** этого не допускает: наружу
+разрешены только вход в туннель, переподключение к твоему серверу и локальная сеть.
+
+```bash
+bash scripts/killswitch.sh on      # включить защиту
+bash scripts/killswitch.sh off     # выключить
+bash scripts/killswitch.sh status  # состояние
+```
+
+Или из строки меню: пункт «🛡 Kill-switch: вкл/выкл». Когда туннель выключен, а
+kill-switch активен, в меню видно предупреждение, что интернет заблокирован.
+
+Как это работает: pf блокирует весь исходящий трафик, кроме `lo0`, интерфейсов
+`utun*` (вход в туннель), соединений к `SERVER_IP:443` и приватных сетей. Список
+`utun*` автоматически обновляется при каждом включении/перезапуске туннеля
+(`vpn.sh`) и фоновым watcher'ом — поэтому не устаревает.
+
+> **Аварийное восстановление:** если что-то пошло не так и интернета нет —
+> `sudo pfctl -d` полностью выключает pf.
+>
+> **Captive-portal** (отель/кафе с веб-логином): под kill-switch страница входа
+> не откроется. Временно `killswitch off`, залогинься в Wi-Fi, затем снова `on`.
+
+## Авто-режим по сети (дом ↔ чужие сети)
+
+Дома — «весь трафик», в мобильной точке/на работе — «только сервисы».
+Сеть определяется по **MAC шлюза** (надёжнее SSID, который свежие macOS скрывают).
+
+```bash
+bash scripts/install-autonet.sh           # включить авто-режим (LaunchAgent)
+bash scripts/vpn-autonet.sh whoami        # узнать ID текущей сети
+```
+
+Затем впиши домашнюю сеть в `~/.config/vpn/netmap` (создаётся из
+`configs/netmap.example`):
+```
+a4:b1:c1:d2:e3:f4   full        # MAC домашнего роутера → весь трафик
+default             selective   # все прочие сети → только сервисы
+```
+
+Агент ловит смену сети (watch на `resolv.conf`) и сам выставляет режим; смена
+видна в меню по значку 🌍/🎯. Снять:
+`launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.user.singbox-autonet.plist`.
 
 ## Применить изменения конфига
 Поправь `configs/singbox-client.local.json` и переустанови:

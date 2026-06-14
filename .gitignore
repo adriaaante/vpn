@@ -8,6 +8,12 @@ credentials.txt
 *.pem
 *.key
 
+# Локальные артефакты рантайма (не коммитим)
+*.pf.conf
+killswitch.enabled
+cache.db
+netmap
+
 # Прочее
 .DS_Store
 *.log

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent (уровень пользователя) для авто-режима по сети.
+  Кладётся в ~/Library/LaunchAgents/com.user.singbox-autonet.plist.
+  Срабатывает при смене сети (WatchPaths на resolv.conf) и раз в 60 сек (страховка).
+  __AUTONET_SH__ подставляет scripts/install-autonet.sh.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.singbox-autonet</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__AUTONET_SH__</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StartInterval</key>
+    <integer>60</integer>
+
+    <key>WatchPaths</key>
+    <array>
+        <string>/var/run/resolv.conf</string>
+        <string>/etc/resolv.conf</string>
+    </array>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/singbox-autonet.err.log</string>
+</dict>
+</plist>

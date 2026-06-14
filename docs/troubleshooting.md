@@ -63,6 +63,18 @@ journalctl -u sing-box -n 100 --no-pager
   Для полного списка российских доменов можно подключить готовый rule-set
   Antizapret (см. `savely-krasovsky/antizapret-sing-box`).
 
+## Нет интернета из-за kill-switch
+Kill-switch специально блокирует трафик, когда туннель не работает. Если интернет
+пропал и его надо срочно вернуть:
+```bash
+sudo pfctl -d                 # полностью выключить pf (снять блокировку)
+bash scripts/killswitch.sh off
+```
+В сетях с веб-логином (captive-portal) под kill-switch не открыть страницу входа —
+выключи kill-switch, залогинься, включи обратно. Если после переподключения
+туннеля приложения «не видят» сеть — список `utun` мог устареть, выполни
+`bash scripts/killswitch.sh reapply`.
+
 ## TUN не поднимается на macOS
 - Убедись, что демон работает от root (он в `/Library/LaunchDaemons`).
 - На свежих macOS не используй `set_system_proxy` вместе с TUN (в нашем конфиге

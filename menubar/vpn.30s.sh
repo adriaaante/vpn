@@ -19,7 +19,14 @@ DIR="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)"
 VPN="$DIR/scripts/vpn.sh"
 MODE_SH="$DIR/scripts/vpn-mode.sh"
 PROTO_SH="$DIR/scripts/vpn-proto.sh"
+KS_SH="$DIR/scripts/killswitch.sh"
+AUTONET_SH="$DIR/scripts/vpn-autonet.sh"
 CFG="/etc/sing-box/config.json"
+
+# Состояние kill-switch и авто-режима (без sudo)
+ks="off"; [ -f /etc/sing-box/killswitch.enabled ] && ks="on"
+autonet="off"
+launchctl print "gui/$(id -u)/com.user.singbox-autonet" >/dev/null 2>&1 && autonet="on"
 
 # Текущий режим маршрутизации (читается без sudo из конфига)
 mode="full"
@@ -69,12 +76,29 @@ if pgrep -x sing-box >/dev/null 2>&1; then
   echo "--Hysteria2 (UDP)$(mark "$sel" hysteria2) | bash=\"$PROTO_SH\" param1=hysteria2 terminal=false refresh=true"
   echo "--🚀 Проверить пинг сейчас | bash=\"$PROTO_SH\" param1=test terminal=false refresh=true"
   echo "---"
+  if [ "$ks" = "on" ]; then
+    echo "🛡 Kill-switch: включён | color=#34c759"
+    echo "→ Выключить kill-switch | bash=\"$KS_SH\" param1=off terminal=false refresh=true"
+  else
+    echo "🛡 Kill-switch: выключен"
+    echo "→ Включить kill-switch (защита от утечки IP) | bash=\"$KS_SH\" param1=on terminal=false refresh=true"
+  fi
+  if [ "$autonet" = "on" ]; then
+    echo "🧭 Авто-режим по сети: включён"
+  else
+    echo "🧭 Авто-режим по сети: выключен (см. install-autonet.sh)"
+  fi
+  echo "---"
   echo "⛔ Выключить | bash=\"$VPN\" param1=off terminal=false refresh=true"
   echo "🔄 Перезапустить | bash=\"$VPN\" param1=restart terminal=false refresh=true"
 else
   echo "⚪️ off | color=#8e8e93"
   echo "---"
   echo "Туннель выключен — интернет напрямую | color=#8e8e93"
+  if [ "$ks" = "on" ]; then
+    echo "🛡 Kill-switch активен — интернет заблокирован до подключения | color=#ff9500"
+    echo "→ Выключить kill-switch | bash=\"$KS_SH\" param1=off terminal=false refresh=true"
+  fi
   echo "---"
   echo "✅ Включить | bash=\"$VPN\" param1=on terminal=false refresh=true"
 fi

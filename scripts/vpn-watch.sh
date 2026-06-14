@@ -15,6 +15,11 @@ mkdir -p "$(dirname "$STATE")"
 # Туннель выключен — нечего отслеживать
 pgrep -x sing-box >/dev/null 2>&1 || exit 0
 
+# Поддерживать kill-switch актуальным (свежий список utun) при автоперезапусках
+if [[ -f /etc/sing-box/killswitch.enabled ]]; then
+  bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/killswitch.sh" reapply >/dev/null 2>&1 || true
+fi
+
 CTRL="$(grep -o '"external_controller": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/')"
 SECRET="$(grep -o '"secret": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/')"
 CTRL="${CTRL:-127.0.0.1:9090}"
