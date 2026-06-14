@@ -21,16 +21,18 @@ if [[ -f /etc/sing-box/killswitch.enabled ]]; then
 fi
 
 # Health-check: процесс жив, но трафик не идёт (завис) → авто-перезапуск демона.
-# Проба идёт через TUN; 3 неудачи подряд (~60с) → kickstart sing-box.
+# Защита от петли: нужно 5 неудач подряд (~100с) И не чаще 1 рестарта в 5 минут.
 HEALTH="$HOME/.cache/vpn-health-fails"
+LASTR="$HOME/.cache/vpn-last-restart"
 if curl -fsS --max-time 6 -o /dev/null https://www.gstatic.com/generate_204 2>/dev/null; then
   echo 0 > "$HEALTH"
 else
   fails=$(( $(cat "$HEALTH" 2>/dev/null || echo 0) + 1 ))
   echo "$fails" > "$HEALTH"
-  if [[ "$fails" -ge 3 ]]; then
+  now=$(date +%s); last=$(cat "$LASTR" 2>/dev/null || echo 0)
+  if [[ "$fails" -ge 5 ]] && (( now - last > 300 )); then
     sudo launchctl kickstart -k system/com.user.singbox >/dev/null 2>&1 || true
-    echo 0 > "$HEALTH"
+    echo 0 > "$HEALTH"; echo "$now" > "$LASTR"
     osascript -e 'display notification "sing-box завис — перезапущен" with title "VPN: авто-восстановление" sound name "Submarine"' >/dev/null 2>&1 || true
   fi
 fi
