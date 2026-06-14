@@ -59,6 +59,12 @@ bash "$DIR/scripts/install-watcher.sh"
 echo; echo "▶ авто-режим по сети"
 bash "$DIR/scripts/install-autonet.sh"
 
+# 4b. Kill-switch включён по умолчанию (защита от утечки IP; fail-closed)
+echo; echo "▶ kill-switch (защита от утечки IP)"
+bash "$DIR/scripts/killswitch.sh" on || true
+echo "  ℹ️ Включён по умолчанию: если туннель упадёт — интернет блокируется,"
+echo "     чтобы реальный IP не утёк. Выключить можно из меню или: vpn killswitch off"
+
 # 5. Алиас `vpn`
 echo; echo "▶ алиас vpn"
 SHELL_RC="$HOME/.zshrc"

@@ -1,6 +1,6 @@
 {
   "log": {
-    "level": "warn",
+    "level": "error",
     "timestamp": true
   },
   "dns": {
@@ -22,7 +22,7 @@
         "server": "dns-local"
       }
     ],
-    "strategy": "prefer_ipv4",
+    "strategy": "ipv4_only",
     "independent_cache": true,
     "final": "dns-remote"
   },

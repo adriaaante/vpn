@@ -26,6 +26,9 @@ ANCHOR="singbox_killswitch"
 # Под root (запуск из демона) sudo не нужен
 SUDO=""; [[ "$(id -u)" -ne 0 ]] && SUDO="sudo"
 
+SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+busy() { bash "$SDIR/vpn-busy.sh" "$1" 2>/dev/null || true; }
+
 server_ip() {
   # IP сервера из первого outbound с "server" (vless/hysteria2)
   grep -o '"server": *"[^"]*"' "$CFG" 2>/dev/null \
@@ -69,14 +72,17 @@ load_pf() {
 
 case "${1:-status}" in
   on|reapply)
+    [[ "$1" == "on" ]] && busy begin
     build_conf
     load_pf
     $SUDO touch "$MARKER"
-    [[ "$1" == "on" ]] && echo "🛡  Kill-switch включён (наружу — только туннель и переподключение к серверу)."
+    [[ "$1" == "on" ]] && { busy end; echo "🛡  Kill-switch включён (наружу — только туннель и переподключение к серверу)."; }
     ;;
   off)
+    busy begin
     $SUDO pfctl -d >/dev/null 2>&1 || true
     $SUDO rm -f "$MARKER"
+    busy end
     echo "Kill-switch выключен — прямой интернет без блокировки."
     ;;
   status)

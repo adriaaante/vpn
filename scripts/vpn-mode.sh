@@ -32,17 +32,19 @@ current() {
 }
 
 reload() { sudo launchctl kickstart -k "system/$LABEL" 2>/dev/null || true; }
+SDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+busy() { bash "$SDIR/vpn-busy.sh" "$1" 2>/dev/null || true; }
 
 cmd="${1:-status}"
 case "$cmd" in
   full)
     [[ -f "$SBDIR/config-full.json" ]] || { echo "Нет $SBDIR/config-full.json — запусти install-macos-daemon.sh"; exit 1; }
-    sudo cp "$SBDIR/config-full.json" "$ACTIVE"; reload
+    busy begin; sudo cp "$SBDIR/config-full.json" "$ACTIVE"; reload; busy end
     echo "🌍 Режим: весь трафик через Латвию (кроме РФ)."
     ;;
   selective|services)
     [[ -f "$SBDIR/config-selective.json" ]] || { echo "Нет $SBDIR/config-selective.json — запусти install-macos-daemon.sh"; exit 1; }
-    sudo cp "$SBDIR/config-selective.json" "$ACTIVE"; reload
+    busy begin; sudo cp "$SBDIR/config-selective.json" "$ACTIVE"; reload; busy end
     echo "🎯 Режим: только Claude/ChatGPT/YouTube/Telegram через Латвию, остальное напрямую."
     ;;
   toggle)

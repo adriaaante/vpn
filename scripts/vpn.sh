@@ -21,6 +21,7 @@ CFG="/etc/sing-box/config.json"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 is_loaded() { sudo launchctl print "system/$LABEL" >/dev/null 2>&1; }
+busy() { bash "$DIR/vpn-busy.sh" "$1" 2>/dev/null || true; }
 reapply_killswitch() {
   [[ -f /etc/sing-box/killswitch.enabled ]] && bash "$DIR/killswitch.sh" reapply >/dev/null 2>&1 || true
 }
@@ -89,19 +90,23 @@ full_status() {
 cmd="${1:-status}"; shift 2>/dev/null || true
 case "$cmd" in
   on|start)
+    busy begin
     if is_loaded; then sudo launchctl kickstart "system/$LABEL"; else sudo launchctl bootstrap system "$PLIST"; fi
     sudo launchctl enable "system/$LABEL" 2>/dev/null || true
-    sleep 1; reapply_killswitch
+    sleep 1; reapply_killswitch; busy end
     echo "✅ VPN включён."; show_ip
     ;;
   off|stop)
+    busy begin
     sudo launchctl bootout system "$PLIST" 2>/dev/null || true
+    busy end
     echo "⛔ VPN выключен — интернет идёт напрямую."
     sleep 1; show_ip
     ;;
   restart)
+    busy begin
     sudo launchctl kickstart -k "system/$LABEL"
-    sleep 1; reapply_killswitch
+    sleep 1; reapply_killswitch; busy end
     echo "🔄 VPN перезапущен."; show_ip
     ;;
   status|diag|diagnose)

@@ -36,9 +36,23 @@ grep -q '"final": "direct"' "$CFG" 2>/dev/null && mode="selective"
 CTRL="$(grep -o '"external_controller": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/')"
 SECRET="$(grep -o '"secret": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/')"
 CTRL="${CTRL:-127.0.0.1:9090}"
-proto_now() { curl -fsS --max-time 3 -H "Authorization: Bearer $SECRET" "http://$CTRL/proxies/$1" 2>/dev/null | grep -o '"now":"[^"]*"' | head -1 | sed 's/.*:"//;s/"//'; }
-proto_delay() { curl -fsS --max-time 3 -H "Authorization: Bearer $SECRET" "http://$CTRL/proxies/$1" 2>/dev/null | grep -o '"delay":[0-9]*' | tail -1 | sed 's/.*://'; }
+proto_now() { curl -fsS --max-time 3 -H "Authorization: Bearer $SECRET" "http://$CTRL/proxies/$1" 2>/dev/null | python3 -c 'import sys,json;
+try: print(json.load(sys.stdin).get("now",""))
+except Exception: print("")' 2>/dev/null; }
+proto_delay() { curl -fsS --max-time 3 -H "Authorization: Bearer $SECRET" "http://$CTRL/proxies/$1" 2>/dev/null | python3 -c 'import sys,json;
+try:
+ h=json.load(sys.stdin).get("history",[]); print(h[-1]["delay"] if h else "")
+except Exception: print("")' 2>/dev/null; }
 mark() { [ "$1" = "$2" ] && printf ' ✓' || printf ''; }
+
+# Спиннер «Применяю…» пока идёт переключение/перезапуск
+if [ -f /tmp/vpn-busy ]; then
+  echo "⏳ … | color=#ff9500"
+  echo "---"
+  echo "Применяю изменения…"
+  echo "🔁 Обновить | refresh=true"
+  exit 0
+fi
 
 if pgrep -x sing-box >/dev/null 2>&1; then
   cc="$(curl -fsS --max-time 4 https://ipinfo.io/country 2>/dev/null | tr -d '[:space:]')"
@@ -62,14 +76,15 @@ if pgrep -x sing-box >/dev/null 2>&1; then
     echo "→ Переключить на «весь трафик» | bash=\"$MODE_SH\" param1=full terminal=false refresh=true"
   fi
   echo "---"
+  fname() { case "$1" in vless-reality) echo "Reality (TCP)";; hysteria2) echo "Hysteria2 (UDP)";; auto) echo "авто";; "") echo "…";; *) echo "$1";; esac; }
   sel="$(proto_now proxy)"
   if [ "$sel" = "auto" ]; then actv="$(proto_now auto)"; else actv="$sel"; fi
   d="$(proto_delay "$actv")"
   dtxt=""; { [ -n "$d" ] && [ "$d" != "0" ]; } && dtxt=" · ${d} ms"
   if [ "$sel" = "auto" ]; then
-    echo "Протокол: авто → ${actv:-?}${dtxt}"
+    echo "Протокол: авто → $(fname "$actv")${dtxt}"
   else
-    echo "Протокол: ${actv:-?}${dtxt}"
+    echo "Протокол: $(fname "$actv")${dtxt}"
   fi
   echo "--Авто (выбирает сам)$(mark "$sel" auto) | bash=\"$PROTO_SH\" param1=auto terminal=false refresh=true"
   echo "--VLESS+Reality (TCP)$(mark "$sel" vless-reality) | bash=\"$PROTO_SH\" param1=reality terminal=false refresh=true"
