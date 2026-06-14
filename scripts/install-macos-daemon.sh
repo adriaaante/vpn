@@ -123,6 +123,20 @@ exec "$SINGBOX_BIN" run -c "\$CFG"
 RUN
   sudo chmod 755 /etc/sing-box/daemon-run.sh
 
+  # Ротация логов демона, чтобы /var/log/sing-box.*.log не росли без предела.
+  # newsyslog — штатный механизм macOS (запускается раз в час). Обрезаем по 5 МБ,
+  # храним 5 сжатых архивов. Флаги: N — не слать сигнал (нечему), Z — gzip.
+  # Примечание: launchd-демон держит файл открытым; после ротации он продолжит
+  # писать в прежний inode до ближайшего перезапуска туннеля (сон/пробуждение/
+  # перезагрузка/смена режима) — на ноутбуке это происходит регулярно, поэтому
+  # размер на диске остаётся ограниченным.
+  sudo tee /etc/newsyslog.d/com.user.singbox.conf >/dev/null <<'NEWSYSLOG'
+# logfilename                 [owner:group]  mode  count  size   when  flags
+/var/log/sing-box.err.log     root:wheel     644   5      5120   *     NZ
+/var/log/sing-box.out.log     root:wheel     644   5      5120   *     NZ
+NEWSYSLOG
+  sudo newsyslog -f /etc/newsyslog.d/com.user.singbox.conf >/dev/null 2>&1 || true
+
   # Рендерим plist на обёртку демона
   local tmp_plist
   tmp_plist="$(mktemp)"
