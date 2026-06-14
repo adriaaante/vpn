@@ -34,6 +34,7 @@ $USER_NAME ALL=(root) NOPASSWD: /bin/launchctl bootstrap system /Library/LaunchD
   /sbin/pfctl -E -f /etc/sing-box/killswitch.pf.conf, \\
   /sbin/pfctl -e -f /etc/sing-box/killswitch.pf.conf, \\
   /sbin/pfctl -d, \\
+  /sbin/pfctl -s info, /sbin/pfctl -s rules, \\
   /usr/bin/touch /etc/sing-box/killswitch.enabled, \\
   /bin/rm -f /etc/sing-box/killswitch.enabled
 EOF

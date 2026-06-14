@@ -22,8 +22,17 @@ PROTO_SH="$DIR/scripts/vpn-proto.sh"
 KS_SH="$DIR/scripts/killswitch.sh"
 CFG="/etc/sing-box/config.json"
 
-# Состояние kill-switch (без sudo)
+# Состояние kill-switch: маркер (хотим ли мы защиту) + РЕАЛЬНАЯ проверка pf
+# (включён ли pf и загружено ли наше правило). Требует sudoers NOPASSWD на pfctl -s.
 ks="off"; [ -f /etc/sing-box/killswitch.enabled ] && ks="on"
+ks_active="no"
+if sudo -n pfctl -s info 2>/dev/null | grep -q "Status: Enabled" && sudo -n pfctl -s rules 2>/dev/null | grep -q "block drop out all"; then
+  ks_active="yes"
+fi
+# ok = хотим и реально активен; fell = хотим, но pf сбросился (macOS); off = не хотим
+ks_state="off"
+[ "$ks" = "on" ] && ks_state="fell"
+{ [ "$ks" = "on" ] && [ "$ks_active" = "yes" ]; } && ks_state="ok"
 
 # Текущий режим маршрутизации (читается без sudo из конфига)
 mode="full"
@@ -56,11 +65,8 @@ if pgrep -x sing-box >/dev/null 2>&1; then
   ip="$(curl -fsS --max-time 4 https://ipinfo.io/ip 2>/dev/null | tr -d '[:space:]')"
   [ -z "$cc" ] && cc="??"
 
-  if [ "$mode" = "selective" ]; then
-    echo "🟢 ${cc} 🎯 | color=#34c759"
-  else
-    echo "🟢 ${cc} | color=#34c759"
-  fi
+  smark=""; [ "$mode" = "selective" ] && smark=" 🎯"
+  echo "🟢 ${cc}${smark} | color=#34c759"
   echo "---"
   echo "Туннель включён | color=#34c759"
   echo "IP: ${ip:-?}  ·  страна: ${cc}"
@@ -88,9 +94,12 @@ if pgrep -x sing-box >/dev/null 2>&1; then
   echo "--Hysteria2 (UDP)$(mark "$sel" hysteria2) | bash=\"$PROTO_SH\" param1=hysteria2 terminal=false refresh=true"
   echo "--🚀 Проверить пинг сейчас | bash=\"$PROTO_SH\" param1=test terminal=false refresh=true"
   echo "---"
-  if [ "$ks" = "on" ]; then
-    echo "🛡 Kill-switch: включён | color=#34c759"
+  if [ "$ks_state" = "ok" ]; then
+    echo "🛡 Kill-switch: включён и активен | color=#34c759"
     echo "→ Выключить kill-switch | bash=\"$KS_SH\" param1=off terminal=false refresh=true"
+  elif [ "$ks_state" = "fell" ]; then
+    echo "⚠️ Kill-switch ОТВАЛИЛСЯ — защита не активна! | color=#ff3b30"
+    echo "→ ВКЛЮЧИТЬ ЗАНОВО | bash=\"$KS_SH\" param1=on terminal=false refresh=true"
   else
     echo "🛡 Kill-switch: выключен"
     echo "→ Включить kill-switch (защита от утечки IP) | bash=\"$KS_SH\" param1=on terminal=false refresh=true"

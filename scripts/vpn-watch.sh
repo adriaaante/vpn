@@ -15,10 +15,8 @@ mkdir -p "$(dirname "$STATE")"
 # Туннель выключен — нечего отслеживать
 pgrep -x sing-box >/dev/null 2>&1 || exit 0
 
-# Поддерживать kill-switch актуальным (свежий список utun) при автоперезапусках
-if [[ -f /etc/sing-box/killswitch.enabled ]]; then
-  bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/killswitch.sh" reapply >/dev/null 2>&1 || true
-fi
+# NB: kill-switch здесь НЕ переустанавливаем автоматически — по желанию пользователя
+# управление kill-switch ручное (статус и кнопка «включить заново» в меню).
 
 # Health-check: процесс жив, но трафик не идёт (завис) → авто-перезапуск демона.
 # Защита от петли: нужно 5 неудач подряд (~100с) И не чаще 1 рестарта в 5 минут.
