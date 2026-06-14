@@ -10,20 +10,9 @@
         "tag": "dns-remote",
         "server": "1.1.1.1",
         "detour": "proxy"
-      },
-      {
-        "type": "local",
-        "tag": "dns-local"
-      }
-    ],
-    "rules": [
-      {
-        "domain_suffix": [".ru", ".рф", "mail.ru", "yandex.net", "vk.com", "vkontakte.ru", "sberbank.ru", "gosuslugi.ru"],
-        "server": "dns-local"
       }
     ],
     "strategy": "ipv4_only",
-    "independent_cache": true,
     "final": "dns-remote"
   },
   "inbounds": [
@@ -40,16 +29,17 @@
     {
       "type": "selector",
       "tag": "proxy",
-      "outbounds": ["auto", "vless-reality", "hysteria2"],
+      "outbounds": ["auto", "vless-reality"],
       "default": "auto"
     },
     {
       "type": "urltest",
       "tag": "auto",
-      "outbounds": ["vless-reality", "hysteria2"],
+      "outbounds": ["vless-reality"],
       "url": "https://www.gstatic.com/generate_204",
-      "interval": "3m",
+      "interval": "2m",
       "tolerance": 50,
+      "idle_timeout": "30m",
       "interrupt_exist_connections": false
     },
     {
@@ -74,25 +64,12 @@
       }
     },
     {
-      "type": "hysteria2",
-      "tag": "hysteria2",
-      "server": "__SERVER_IP__",
-      "server_port": 443,
-      "password": "__HYSTERIA2_PASSWORD__",
-      "tls": {
-        "enabled": true,
-        "server_name": "__SERVER_IP__",
-        "insecure": true,
-        "alpn": ["h3"]
-      }
-    },
-    {
       "type": "direct",
       "tag": "direct"
     }
   ],
   "route": {
-    "default_domain_resolver": "dns-local",
+    "default_domain_resolver": "dns-remote",
     "rules": [
       { "action": "sniff" },
       { "protocol": "dns", "action": "hijack-dns" },

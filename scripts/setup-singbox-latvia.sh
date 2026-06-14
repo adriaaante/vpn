@@ -65,14 +65,6 @@ gen_secrets() {
   REALITY_PUBLIC_KEY="$(echo "$kp" | awk '/PublicKey/{print $2}')"
   VLESS_UUID="$(sing-box generate uuid)"
   REALITY_SHORT_ID="$(sing-box generate rand --hex 8)"
-  HYSTERIA2_PASSWORD="$(openssl rand -base64 16 | tr -d '/+=' | head -c 22)"
-
-  # Самоподписанный сертификат для Hysteria2 (клиент использует tls.insecure=true)
-  if [[ ! -f "$SB_DIR/cert.pem" || ! -f "$SB_DIR/key.pem" ]]; then
-    openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
-      -keyout "$SB_DIR/key.pem" -out "$SB_DIR/cert.pem" -days 3650 \
-      -subj "/CN=www.bing.com" >/dev/null 2>&1
-  fi
 }
 
 render_config() {
@@ -82,7 +74,6 @@ render_config() {
     -e "s|__REALITY_SNI__|$REALITY_SNI|g" \
     -e "s|__REALITY_PRIVATE_KEY__|$REALITY_PRIVATE_KEY|g" \
     -e "s|__REALITY_SHORT_ID__|$REALITY_SHORT_ID|g" \
-    -e "s|__HYSTERIA2_PASSWORD__|$HYSTERIA2_PASSWORD|g" \
     "$TEMPLATE" > "$CONFIG"
   sing-box check -c "$CONFIG"
   echo "[*] Конфиг валиден."
@@ -129,7 +120,6 @@ print_client_values() {
     echo "REALITY_SNI          = $REALITY_SNI"
     echo "REALITY_PUBLIC_KEY   = $REALITY_PUBLIC_KEY"
     echo "REALITY_SHORT_ID     = $REALITY_SHORT_ID"
-    echo "HYSTERIA2_PASSWORD   = $HYSTERIA2_PASSWORD"
     echo
     echo "VLESS share-link (для импорта в Hiddify/v2rayN, если нужно вручную):"
     echo "vless://$VLESS_UUID@$ip:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=$REALITY_SNI&fp=chrome&pbk=$REALITY_PUBLIC_KEY&sid=$REALITY_SHORT_ID&type=tcp#latvia-reality"

@@ -51,7 +51,6 @@ build_local_cfg() {
   read -rp "  REALITY_SNI        : " REALITY_SNI
   read -rp "  REALITY_PUBLIC_KEY : " REALITY_PUBLIC_KEY
   read -rp "  REALITY_SHORT_ID   : " REALITY_SHORT_ID
-  read -rp "  HYSTERIA2_PASSWORD : " HYSTERIA2_PASSWORD
   # Локальный секрет для Clash API (нужен переключателю протоколов в меню)
   CLASH_SECRET="$(openssl rand -hex 16)"
   sed \
@@ -60,7 +59,6 @@ build_local_cfg() {
     -e "s|__REALITY_SNI__|$REALITY_SNI|g" \
     -e "s|__REALITY_PUBLIC_KEY__|$REALITY_PUBLIC_KEY|g" \
     -e "s|__REALITY_SHORT_ID__|$REALITY_SHORT_ID|g" \
-    -e "s|__HYSTERIA2_PASSWORD__|$HYSTERIA2_PASSWORD|g" \
     -e "s|__CLASH_SECRET__|$CLASH_SECRET|g" \
     "$TEMPLATE" > "$LOCAL_CFG"
   echo "[*] Создан $LOCAL_CFG"

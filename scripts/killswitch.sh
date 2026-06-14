@@ -53,6 +53,7 @@ build_conf() {
     echo "set block-policy drop"
     echo "set skip on lo0"
     echo "block drop out all"
+    echo "block drop out inet6 all"
     # Туннельные интерфейсы utun0..15: пропускаем В ОБЕ СТОРОНЫ (без 'out').
     # Важно: расшифрованные ОТВЕТЫ sing-box пишет обратно в utun как 'in on utun';
     # при 'pass out ...' они блокировались → приложения не получали ответ.
@@ -62,11 +63,9 @@ build_conf() {
     # переподключение к серверу
     echo "pass out quick proto tcp to $ip port 443"
     echo "pass out quick proto udp to $ip port 443"
-    # DNS — нужен для переподключения (резолв проверочного URL/серверов). Утечки
-    # IP нет (это только DNS-запросы); основной DNS всё равно идёт через DoH в туннеле.
-    echo "pass out quick proto udp to any port 53"
-    echo "pass out quick proto tcp to any port 53"
-    # локальные сети (LAN/принтеры/роутер/DHCP/DNS роутера)
+    # Локальные сети (LAN/принтеры/роутер + DNS роутера). DNS НАРУЖУ не пропускаем:
+    # весь DNS идёт через DoH в туннеле, а при падении туннеля прямой DNS к провайдеру
+    # запрещён (иначе провайдер видел бы, какие сайты ты резолвишь — утечка).
     echo "pass out quick to { 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 224.0.0.0/4 }"
     # DHCP
     echo "pass out quick proto udp from any port 68 to any port 67"

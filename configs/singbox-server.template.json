@@ -28,24 +28,6 @@
           "short_id": ["__REALITY_SHORT_ID__"]
         }
       }
-    },
-    {
-      "type": "hysteria2",
-      "tag": "hysteria2-in",
-      "listen": "::",
-      "listen_port": 443,
-      "users": [
-        {
-          "password": "__HYSTERIA2_PASSWORD__"
-        }
-      ],
-      "masquerade": "https://www.bing.com",
-      "tls": {
-        "enabled": true,
-        "alpn": ["h3"],
-        "certificate_path": "/etc/sing-box/cert.pem",
-        "key_path": "/etc/sing-box/key.pem"
-      }
     }
   ],
   "outbounds": [
