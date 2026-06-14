@@ -22,7 +22,11 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 is_loaded() { sudo launchctl print "system/$LABEL" >/dev/null 2>&1; }
 busy() { bash "$DIR/vpn-busy.sh" "$1" 2>/dev/null || true; }
 reapply_killswitch() {
-  [[ -f /etc/sing-box/killswitch.enabled ]] && bash "$DIR/killswitch.sh" reapply >/dev/null 2>&1 || true
+  [[ -f /etc/sing-box/killswitch.enabled ]] || return 0
+  # Сразу + несколько раз в фоне: sing-box после рестарта создаёт новый utun не
+  # мгновенно; так pf быстро подхватывает свежий интерфейс и не блокирует туннель.
+  bash "$DIR/killswitch.sh" reapply >/dev/null 2>&1 || true
+  ( for _ in 1 2 3 4 5 6; do sleep 2; [[ -f /etc/sing-box/killswitch.enabled ]] && bash "$DIR/killswitch.sh" reapply >/dev/null 2>&1 || true; done ) >/dev/null 2>&1 &
 }
 
 server_ip() {
