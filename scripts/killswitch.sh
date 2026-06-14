@@ -23,6 +23,9 @@ PF_CONF="/etc/sing-box/killswitch.pf.conf"
 MARKER="/etc/sing-box/killswitch.enabled"
 ANCHOR="singbox_killswitch"
 
+# Под root (запуск из демона) sudo не нужен
+SUDO=""; [[ "$(id -u)" -ne 0 ]] && SUDO="sudo"
+
 server_ip() {
   # IP сервера из первого outbound с "server" (vless/hysteria2)
   grep -o '"server": *"[^"]*"' "$CFG" 2>/dev/null \
@@ -57,23 +60,23 @@ build_conf() {
     echo "pass out quick to { 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 224.0.0.0/4 }"
     # DHCP
     echo "pass out quick proto udp from any port 68 to any port 67"
-  } | sudo tee "$PF_CONF" >/dev/null
+  } | $SUDO tee "$PF_CONF" >/dev/null
 }
 
 load_pf() {
-  sudo pfctl -E -f "$PF_CONF" >/dev/null 2>&1 || sudo pfctl -e -f "$PF_CONF" >/dev/null 2>&1 || true
+  $SUDO pfctl -E -f "$PF_CONF" >/dev/null 2>&1 || $SUDO pfctl -e -f "$PF_CONF" >/dev/null 2>&1 || true
 }
 
 case "${1:-status}" in
   on|reapply)
     build_conf
     load_pf
-    sudo touch "$MARKER"
+    $SUDO touch "$MARKER"
     [[ "$1" == "on" ]] && echo "🛡  Kill-switch включён (наружу — только туннель и переподключение к серверу)."
     ;;
   off)
-    sudo pfctl -d >/dev/null 2>&1 || true
-    sudo rm -f "$MARKER"
+    $SUDO pfctl -d >/dev/null 2>&1 || true
+    $SUDO rm -f "$MARKER"
     echo "Kill-switch выключен — прямой интернет без блокировки."
     ;;
   status)

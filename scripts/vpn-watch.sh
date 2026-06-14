@@ -20,6 +20,21 @@ if [[ -f /etc/sing-box/killswitch.enabled ]]; then
   bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/killswitch.sh" reapply >/dev/null 2>&1 || true
 fi
 
+# Health-check: процесс жив, но трафик не идёт (завис) → авто-перезапуск демона.
+# Проба идёт через TUN; 3 неудачи подряд (~60с) → kickstart sing-box.
+HEALTH="$HOME/.cache/vpn-health-fails"
+if curl -fsS --max-time 6 -o /dev/null https://www.gstatic.com/generate_204 2>/dev/null; then
+  echo 0 > "$HEALTH"
+else
+  fails=$(( $(cat "$HEALTH" 2>/dev/null || echo 0) + 1 ))
+  echo "$fails" > "$HEALTH"
+  if [[ "$fails" -ge 3 ]]; then
+    sudo launchctl kickstart -k system/com.user.singbox >/dev/null 2>&1 || true
+    echo 0 > "$HEALTH"
+    osascript -e 'display notification "sing-box завис — перезапущен" with title "VPN: авто-восстановление" sound name "Submarine"' >/dev/null 2>&1 || true
+  fi
+fi
+
 CTRL="$(grep -o '"external_controller": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/')"
 SECRET="$(grep -o '"secret": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/')"
 CTRL="${CTRL:-127.0.0.1:9090}"

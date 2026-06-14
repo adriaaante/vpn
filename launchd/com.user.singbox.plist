@@ -5,8 +5,9 @@
   RunAtLoad + KeepAlive => поднимается при загрузке (до входа в систему) и
   сам перезапускается после сна/сбоя. Это и есть "открыл Mac -> уже работает".
 
-  ВАЖНО: __SINGBOX_BIN__ и __CONFIG_PATH__ подставляет install-macos-daemon.sh
-  (Apple Silicon обычно /opt/homebrew/bin/sing-box; Intel /usr/local/bin/sing-box).
+  Демон запускает обёртку /etc/sing-box/daemon-run.sh, которая при включённом
+  kill-switch поднимает защиту ещё до старта sing-box, затем запускает сам sing-box.
+  install-macos-daemon.sh подставляет путь обёртки в __DAEMON_RUN__.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -16,10 +17,8 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>__SINGBOX_BIN__</string>
-        <string>run</string>
-        <string>-c</string>
-        <string>__CONFIG_PATH__</string>
+        <string>/bin/bash</string>
+        <string>__DAEMON_RUN__</string>
     </array>
 
     <key>RunAtLoad</key>

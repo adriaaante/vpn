@@ -91,12 +91,28 @@ install_daemon() {
   sudo cp /etc/sing-box/config-full.json "$DEST_CFG"
   sudo chmod 644 /etc/sing-box/config-full.json /etc/sing-box/config-selective.json "$DEST_CFG"
 
-  # Рендерим plist с путями к бинарю и конфигу
+  # Самодостаточная копия killswitch + обёртка демона в /etc/sing-box
+  # (чтобы kill-switch поднимался при загрузке независимо от расположения репозитория)
+  sudo cp "$REPO_DIR/scripts/killswitch.sh" /etc/sing-box/killswitch.sh
+  sudo chmod 755 /etc/sing-box/killswitch.sh
+  sudo tee /etc/sing-box/daemon-run.sh >/dev/null <<RUN
+#!/bin/bash
+# Обёртка демона: при включённом kill-switch поднимает защиту, затем sing-box.
+CFG="/etc/sing-box/config.json"
+if [ -f /etc/sing-box/killswitch.enabled ]; then
+  /bin/bash /etc/sing-box/killswitch.sh reapply >/dev/null 2>&1 || true
+  # дотягиваем utun после старта sing-box (несколько повторов)
+  ( for _ in 1 2 3 4 5 6; do sleep 5; [ -f /etc/sing-box/killswitch.enabled ] && /bin/bash /etc/sing-box/killswitch.sh reapply >/dev/null 2>&1 || true; done ) &
+fi
+exec "$SINGBOX_BIN" run -c "\$CFG"
+RUN
+  sudo chmod 755 /etc/sing-box/daemon-run.sh
+
+  # Рендерим plist на обёртку демона
   local tmp_plist
   tmp_plist="$(mktemp)"
   sed \
-    -e "s|__SINGBOX_BIN__|$SINGBOX_BIN|g" \
-    -e "s|__CONFIG_PATH__|$DEST_CFG|g" \
+    -e "s|__DAEMON_RUN__|/etc/sing-box/daemon-run.sh|g" \
     "$PLIST_TEMPLATE" > "$tmp_plist"
 
   sudo cp "$tmp_plist" "$DEST_PLIST"
