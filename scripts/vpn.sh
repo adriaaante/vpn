@@ -1,51 +1,98 @@
 #!/usr/bin/env bash
 #
-# vpn.sh — удобное включение/выключение туннеля на macOS.
+# vpn.sh — единый командный центр туннеля на macOS.
 #
-#   vpn on        включить
-#   vpn off       выключить (вернуться к прямому интернету)
-#   vpn restart   перезапустить (например, после правки конфига)
-#   vpn status    показать состояние и текущий внешний IP
+#   vpn on | off | restart       включить / выключить / перезапустить
+#   vpn status                   полная диагностика (по умолчанию)
+#   vpn mode  [full|selective|toggle|status]   режим маршрутизации
+#   vpn proto [auto|reality|hysteria2|status|test]   выбор протокола
+#   vpn killswitch [on|off|status]             защита от утечки IP
+#   vpn net   [whoami]           авто-режим по сети / показать сеть
+#   vpn help                     справка
 #
 # Удобный алиас (добавь в ~/.zshrc):
 #   alias vpn="bash $HOME/vpn/scripts/vpn.sh"
-#
-# Команды управления демоном требуют sudo. Как сделать переключение
-# без пароля — см. docs/macos-client-setup.md (раздел про sudoers).
 
-set -euo pipefail
+set -uo pipefail
 
 PLIST="/Library/LaunchDaemons/com.user.singbox.plist"
 LABEL="com.user.singbox"
-
-show_ip() {
-  local ip
-  ip="$(curl -fsS --max-time 6 https://ipinfo.io/ip 2>/dev/null || echo '?')"
-  local geo
-  geo="$(curl -fsS --max-time 6 https://ipinfo.io/country 2>/dev/null || echo '?')"
-  echo "Внешний IP: $ip ($geo)"
-}
+CFG="/etc/sing-box/config.json"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 is_loaded() { sudo launchctl print "system/$LABEL" >/dev/null 2>&1; }
-
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Если kill-switch включён — переприменить правила со свежим списком utun
 reapply_killswitch() {
   [[ -f /etc/sing-box/killswitch.enabled ]] && bash "$DIR/killswitch.sh" reapply >/dev/null 2>&1 || true
 }
 
-cmd="${1:-status}"
+server_ip() {
+  grep -o '"server": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/' \
+    | grep -Ev '^(1\.1\.1\.1|8\.8\.8\.8|127\.|::1)$' | head -1
+}
+clash_ctrl() { local c; c="$(grep -o '"external_controller": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/')"; echo "${c:-127.0.0.1:9090}"; }
+clash_secret() { grep -o '"secret": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/'; }
+proto_field() { curl -fsS --max-time 3 -H "Authorization: Bearer $(clash_secret)" "http://$(clash_ctrl)/proxies/$1" 2>/dev/null | grep -o "\"$2\":[^,}]*" | head -1 | sed "s/.*:\"\\{0,1\\}//;s/\"$//"; }
+
+show_ip() {
+  local ip geo
+  ip="$(curl -fsS --max-time 6 https://ipinfo.io/ip 2>/dev/null || echo '?')"
+  geo="$(curl -fsS --max-time 6 https://ipinfo.io/country 2>/dev/null || echo '?')"
+  echo "Внешний IP: $ip ($geo)"
+}
+
+full_status() {
+  echo "  VPN — диагностика"
+  echo "  ─────────────────"
+
+  # Туннель
+  if pgrep -x sing-box >/dev/null 2>&1; then
+    echo "  Туннель:      🟢 включён"
+  else
+    if is_loaded; then echo "  Туннель:      🟠 демон загружен, процесс не найден"
+    else echo "  Туннель:      ⚪️ выключен"; fi
+  fi
+
+  # IP/страна
+  local ip geo
+  ip="$(curl -fsS --max-time 6 https://ipinfo.io/ip 2>/dev/null || echo '?')"
+  geo="$(curl -fsS --max-time 6 https://ipinfo.io/country 2>/dev/null || echo '?')"
+  if [ "$geo" = "LV" ]; then echo "  Внешний IP:   $ip ($geo) ✓ Латвия"
+  elif [ "$geo" = "RU" ]; then echo "  Внешний IP:   $ip ($geo) ⚠️ Россия — туннель не активен!"
+  else echo "  Внешний IP:   $ip ($geo)"; fi
+
+  # Протокол + пинг
+  local sel actv d
+  sel="$(proto_field proxy now)"
+  if [ "$sel" = "auto" ]; then actv="$(proto_field auto now)"; else actv="$sel"; fi
+  d="$(curl -fsS --max-time 3 -H "Authorization: Bearer $(clash_secret)" "http://$(clash_ctrl)/proxies/${actv}" 2>/dev/null | grep -o '"delay":[0-9]*' | tail -1 | sed 's/.*://')"
+  [ -n "${sel:-}" ] && echo "  Протокол:     ${sel}${actv:+ → $actv}${d:+ · ${d} ms}"
+
+  # Режим
+  if grep -q '"final": "direct"' "$CFG" 2>/dev/null; then echo "  Режим:        🎯 только сервисы"; else echo "  Режим:        🌍 весь трафик"; fi
+
+  # Kill-switch
+  if [ -f /etc/sing-box/killswitch.enabled ]; then echo "  Kill-switch:  🛡 включён"; else echo "  Kill-switch:  выключен"; fi
+
+  # Авто-режим
+  if launchctl print "gui/$(id -u)/com.user.singbox-autonet" >/dev/null 2>&1; then echo "  Авто-режим:   🧭 включён"; else echo "  Авто-режим:   выключен"; fi
+
+  # Watcher (failover/health)
+  if launchctl print "gui/$(id -u)/com.user.singbox-watch" >/dev/null 2>&1; then echo "  Watcher:      ✓ работает (failover + health)"; else echo "  Watcher:      выключен"; fi
+
+  # Доступность сервера
+  local sip; sip="$(server_ip)"
+  if [ -n "$sip" ]; then
+    if nc -z -G 3 "$sip" 443 >/dev/null 2>&1; then echo "  Сервер:       $sip:443 ✓ доступен"; else echo "  Сервер:       $sip:443 ⚠️ недоступен"; fi
+  fi
+}
+
+cmd="${1:-status}"; shift 2>/dev/null || true
 case "$cmd" in
   on|start)
-    if is_loaded; then
-      sudo launchctl kickstart "system/$LABEL"
-    else
-      sudo launchctl bootstrap system "$PLIST"
-    fi
+    if is_loaded; then sudo launchctl kickstart "system/$LABEL"; else sudo launchctl bootstrap system "$PLIST"; fi
     sudo launchctl enable "system/$LABEL" 2>/dev/null || true
     sleep 1; reapply_killswitch
-    echo "✅ VPN включён."
-    show_ip
+    echo "✅ VPN включён."; show_ip
     ;;
   off|stop)
     sudo launchctl bootout system "$PLIST" 2>/dev/null || true
@@ -55,20 +102,19 @@ case "$cmd" in
   restart)
     sudo launchctl kickstart -k "system/$LABEL"
     sleep 1; reapply_killswitch
-    echo "🔄 VPN перезапущен."
-    show_ip
+    echo "🔄 VPN перезапущен."; show_ip
     ;;
-  status)
-    if is_loaded; then
-      state="$(sudo launchctl print "system/$LABEL" 2>/dev/null | awk -F'= ' '/[^a-z]state =/{gsub(/ /,"",$2);print $2; exit}')"
-      echo "Состояние: загружен (${state:-running})"
-    else
-      echo "Состояние: выключен (демон не загружен)"
-    fi
-    show_ip
+  status|diag|diagnose)
+    full_status
+    ;;
+  mode)       bash "$DIR/vpn-mode.sh" "$@" ;;
+  proto)      bash "$DIR/vpn-proto.sh" "$@" ;;
+  killswitch|ks) bash "$DIR/killswitch.sh" "$@" ;;
+  net)        bash "$DIR/vpn-autonet.sh" "$@" ;;
+  help|-h|--help)
+    sed -n '3,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     ;;
   *)
-    echo "Использование: vpn on|off|restart|status"
-    exit 1
+    echo "Неизвестная команда: $cmd"; echo "vpn help — список команд"; exit 1
     ;;
 esac

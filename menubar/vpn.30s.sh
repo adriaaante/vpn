@@ -104,5 +104,6 @@ else
 fi
 
 echo "---"
+echo "🩺 Диагностика | bash=\"$VPN\" param1=status terminal=true"
 echo "📜 Логи | bash=\"/usr/bin/open\" param1=\"/var/log/sing-box.err.log\" terminal=false"
 echo "🔁 Обновить | refresh=true"

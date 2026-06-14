@@ -45,15 +45,30 @@ ChatGPT, YouTube, Telegram и остальной зарубежный интер
    Скрипт всё установит, сгенерирует ключи и **напечатает значения для клиента**.
    Подробно: [`docs/server-setup-latvia.md`](docs/server-setup-latvia.md).
 
-2. **MacBook.** На Mac выполни:
+2. **MacBook.** Одна команда ставит всё (демон + меню + watcher + авто-режим +
+   sudoers без пароля + алиас `vpn`):
    ```bash
-   bash scripts/install-macos-daemon.sh
+   bash scripts/install-all.sh
    ```
    Введи значения с сервера один раз — дальше всё автоматически.
-   Подробно: [`docs/macos-client-setup.md`](docs/macos-client-setup.md).
+   (Можно ставить и по частям — см. [`docs/macos-client-setup.md`](docs/macos-client-setup.md).)
 
-3. **Проверь:** `https://ipinfo.io` → латвийский IP; `claude.ai` открывается;
-   `https://dnsleaktest.com` показывает только наш DoH-резолвер.
+3. **Проверь:** `vpn status` (полная диагностика) или `https://ipinfo.io` →
+   латвийский IP; `claude.ai` открывается.
+
+## Одна команда `vpn` — командный центр
+
+```
+vpn on | off | restart     включить / выключить / перезапустить
+vpn status                 полная диагностика (туннель, IP, протокол+пинг, режим,
+                           kill-switch, авто-режим, доступность сервера)
+vpn mode  selective|full   режим маршрутизации
+vpn proto reality|hysteria2|auto   выбор протокола
+vpn killswitch on|off      защита от утечки IP
+vpn net   whoami           показать текущую сеть (для авто-режима)
+```
+
+Всё то же доступно кликом из иконки в строке меню.
 
 ## Документация
 
