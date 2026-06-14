@@ -92,6 +92,7 @@
     }
   ],
   "route": {
+    "default_domain_resolver": "dns-local",
     "rules": [
       { "action": "sniff" },
       { "protocol": "dns", "action": "hijack-dns" },
@@ -109,8 +110,7 @@
           "telegram.org", "t.me", "telegram.me", "telesco.pe"
         ],
         "outbound": "proxy"
-      },
-      { "rule_set": "geoip-telegram", "outbound": "proxy" }
+      }
     ],
     "rule_set": [
       {
@@ -118,13 +118,6 @@
         "tag": "geoip-ru",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs",
-        "download_detour": "proxy"
-      },
-      {
-        "type": "remote",
-        "tag": "geoip-telegram",
-        "format": "binary",
-        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-telegram.srs",
         "download_detour": "proxy"
       }
     ],

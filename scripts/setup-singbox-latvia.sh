@@ -42,10 +42,12 @@ install_singbox() {
     aarch64|arm64) arch="arm64" ;;
     *) echo "Неизвестная архитектура $(uname -m)"; exit 1 ;;
   esac
-  tag="$(curl -fsSL https://api.github.com/repos/SagerNet/sing-box/releases/latest \
-        | grep -m1 '"tag_name"' | cut -d'"' -f4)"
-  ver="${tag#v}"
   tmp="$(mktemp -d)"
+  # NB: качаем в файл, затем грепаем файл. НЕ `curl | grep -m1` — под
+  # `set -o pipefail` grep рано закрывает пайп → curl: (23) → падение скрипта.
+  curl -fsSL https://api.github.com/repos/SagerNet/sing-box/releases/latest -o "$tmp/rel.json"
+  tag="$(grep -m1 '"tag_name"' "$tmp/rel.json" | cut -d'"' -f4)"
+  ver="${tag#v}"
   curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/${tag}/sing-box-${ver}-linux-${arch}.tar.gz" \
     -o "$tmp/sb.tar.gz"
   tar -xzf "$tmp/sb.tar.gz" -C "$tmp"
