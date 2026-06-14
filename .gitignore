@@ -4,6 +4,11 @@ configs/*.local.json
 secrets/
 credentials.txt
 
+# Бэкапы локальных конфигов (upgrade-client.sh: *.local.json.bak.<время>) —
+# тоже содержат секреты, не коммитим
+*.bak
+*.bak.*
+
 # Сертификаты/ключи
 *.pem
 *.key
