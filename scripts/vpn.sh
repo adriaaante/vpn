@@ -36,7 +36,9 @@ server_ip() {
 }
 clash_ctrl() { local c; c="$(grep -o '"external_controller": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/')"; echo "${c:-127.0.0.1:9090}"; }
 clash_secret() { grep -o '"secret": *"[^"]*"' "$CFG" 2>/dev/null | sed 's/.*"\([^"]*\)"/\1/'; }
-proto_field() { curl -fsS --max-time 3 -H "Authorization: Bearer $(clash_secret)" "http://$(clash_ctrl)/proxies/$1" 2>/dev/null | grep -o "\"$2\":[^,}]*" | head -1 | sed "s/.*:\"\\{0,1\\}//;s/\"$//"; }
+proto_now() { curl -fsS --max-time 3 -H "Authorization: Bearer $(clash_secret)" "http://$(clash_ctrl)/proxies/$1" 2>/dev/null | python3 -c 'import sys,json
+try: print(json.load(sys.stdin).get("now",""))
+except Exception: print("")' 2>/dev/null; }
 
 show_ip() {
   local ip geo
@@ -67,8 +69,8 @@ full_status() {
 
   # Протокол + пинг
   local sel actv d
-  sel="$(proto_field proxy now)"
-  if [ "$sel" = "auto" ]; then actv="$(proto_field auto now)"; else actv="$sel"; fi
+  sel="$(proto_now proxy)"
+  if [ "$sel" = "auto" ]; then actv="$(proto_now auto)"; else actv="$sel"; fi
   d="$(curl -fsS --max-time 3 -H "Authorization: Bearer $(clash_secret)" "http://$(clash_ctrl)/proxies/${actv}" 2>/dev/null | grep -o '"delay":[0-9]*' | tail -1 | sed 's/.*://')"
   [ -n "${sel:-}" ] && echo "  Протокол:     ${sel}${actv:+ → $actv}${d:+ · ${d} ms}"
 

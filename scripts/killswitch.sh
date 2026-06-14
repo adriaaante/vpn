@@ -53,9 +53,10 @@ build_conf() {
     echo "set block-policy drop"
     echo "set skip on lo0"
     echo "block drop out all"
-    # вход трафика в туннель
-    for u in $(utun_list); do
-      echo "pass out quick on $u all"
+    # вход трафика в туннель: разрешаем ВСЕ utun0..15 (а не только текущие),
+    # чтобы не было гонки — какой бы utun ни создал sing-box после рестарта.
+    for n in $(seq 0 15); do
+      echo "pass out quick on utun${n} all"
     done
     # переподключение к серверу
     echo "pass out quick proto tcp to $ip port 443"
