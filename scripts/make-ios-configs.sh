@@ -39,6 +39,17 @@ def base():
     }]
     # macOS-специфику убираем: кэш и clash_api приложение задаёт само
     d.pop("experimental", None)
+    # Ядро sing-box в приложении iOS (sing-box VT) старше 1.12 и не понимает
+    # новый формат DNS (поле "type") и route.default_domain_resolver.
+    # Переводим DNS в легаси-формат (через "address") и убираем 1.12+ поля.
+    d["dns"] = {
+        "servers": [
+            {"tag": "dns-remote", "address": "https://1.1.1.1/dns-query", "detour": "proxy"}
+        ],
+        "strategy": "ipv4_only",
+        "final": "dns-remote"
+    }
+    d.get("route", {}).pop("default_domain_resolver", None)
     return d
 
 def is_ru_direct(x):
