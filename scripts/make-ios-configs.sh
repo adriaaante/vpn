@@ -68,9 +68,19 @@ r["rules"] = [x for x in r["rules"] if not is_ru_direct(x)]
 r["rule_set"] = [x for x in r.get("rule_set", []) if x.get("tag") != "geoip-ru"]
 
 # SELECTIVE (leak-proof) — сервисы→Латвия, RU→напрямую, всё прочее → reject.
-# catch-all reject стоит ПОСЛЕ правил сервисов/RU, поэтому they win; до final
-# дело не доходит → ни один незащищённый зарубежный коннект не уйдёт с RU IP.
+# ВАЖНО: YouTube/Telegram зависят от ОБЩЕЙ инфраструктуры (google.com/googleapis/
+# gstatic + широкие диапазоны Telegram). Без них catch-all reject их ломает,
+# поэтому добавляем их в туннель ПЕРЕД reject.
 sel = base(); r = sel["route"]
+r["rules"].append({"domain_suffix": [
+    "google.com", "googleapis.com", "gstatic.com", "googleusercontent.com",
+    "gvt1.com", "gvt2.com", "youtube-nocookie.com"
+], "outbound": "proxy"})
+r["rules"].append({"ip_cidr": [
+    "91.108.0.0/16", "149.154.160.0/20", "95.161.64.0/20",
+    "185.76.151.0/24", "91.105.192.0/23",
+    "2001:67c:4e8::/48", "2001:b28:f23d::/48", "2001:b28:f23f::/48", "2001:b28:f242::/48"
+], "outbound": "proxy"})
 r["rules"].append({"ip_cidr": ["0.0.0.0/0", "::/0"], "action": "reject"})
 
 for name, cfg in (("strict", strict), ("full", full), ("selective", sel)):
