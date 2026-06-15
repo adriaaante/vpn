@@ -68,6 +68,19 @@ curl -sS --max-time 6 https://ipinfo.io/json   # ДОЛЖЕН быть timeout, 
 bash scripts/vpn.sh on
 ```
 
+## Второе устройство (iPhone и т.п.)
+Тот же сервер/UUID работает на нескольких устройствах одновременно — менять на
+сервере ничего не нужно.
+- `bash scripts/share-link.sh` — печатает ссылку `vless://` + QR для импорта в
+  любой клиент (Hiddify/v2RayTun/Streisand). Один режим — «всё через Латвию».
+- `bash scripts/make-ios-configs.sh` — собирает 3 конфига под приложение
+  **sing-box VT** (App Store, разработчик VIRAL TECH INC., App ID 6673731168):
+  `configs/ios-{strict,full,selective}.local.json` (gitignored). Переключение
+  профиля в приложении = переключение режима. selective сделан leak-proof
+  (catch-all `reject` → российский IP не утекает на зарубежные сайты).
+- ОБА скрипта только ЧИТАЮТ локальный конфиг и пишут новые файлы — на работающий
+  Mac-туннель/демон НЕ влияют.
+
 ## Где что в репозитории
 - `scripts/` — установка и управление (`setup-singbox-latvia.sh`,
   `install-macos-daemon.sh`, `install-extras.sh`, `vpn.sh`, `vpn-mode.sh`,
