@@ -5,8 +5,9 @@
 #
 #   vpn-proto auto         автоматический выбор (urltest) — по умолчанию
 #   vpn-proto reality      принудительно VLESS+Reality (TCP)
-#   vpn-proto hysteria2    принудительно Hysteria2 (UDP)
 #   vpn-proto status       что выбрано и какой протокол реально активен
+#
+# Примечание: Hysteria2 удалён (РФ душит UDP) — единственный протокол VLESS+Reality.
 #
 # Выбор сохраняется в cache.db и переживает перезапуск/сон.
 
@@ -37,7 +38,7 @@ cmd="${1:-status}"
 case "$cmd" in
   auto)              switch "auto" ;;
   reality|vless)     switch "vless-reality" ;;
-  hysteria2|hy2)     switch "hysteria2" ;;
+  hysteria2|hy2)     echo "Hysteria2 удалён из схемы (РФ душит UDP). Активен VLESS+Reality."; exit 1 ;;
   status)
     sel="$(now_of proxy)"
     echo "Выбрано: ${sel:-неизвестно}"
@@ -52,5 +53,5 @@ case "$cmd" in
     echo "Пинг $target: ${d:-таймаут} ms"
     ;;
   *)
-    echo "Использование: vpn-proto auto|reality|hysteria2|status|test"; exit 1 ;;
+    echo "Использование: vpn-proto auto|reality|status|test"; exit 1 ;;
 esac
