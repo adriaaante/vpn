@@ -26,21 +26,21 @@ journalctl -u sing-box -n 100 --no-pager
 ## Волна блокировок (раньше работало — перестало)
 Россия периодически «давит» конкретные схемы. Порядок действий по нарастанию:
 
-1. **Ничего не делай 1–3 минуты** — клиент сам переключится между Reality и
-   Hysteria2 (`urltest`).
+1. **Ничего не делай 1–3 минуты** — `urltest` сам переподнимет связь, если
+   Reality моргнул кратковременно.
 2. **Смени SNI** у Reality (на сервере), если душат именно его маскировку:
    ```bash
    REALITY_SNI=www.icloud.com bash scripts/setup-singbox-latvia.sh
    ```
    затем обнови значение `REALITY_SNI` в `configs/singbox-client.local.json` и
    `bash scripts/install-macos-daemon.sh`.
-3. **Смени порт** Hysteria2/Reality (если душат по порту 443 — реже, но бывает):
+3. **Смени порт** Reality (если душат по порту 443 — реже, но бывает):
    поправь `listen_port` в серверном конфиге и `server_port` в клиентском.
-4. **Добавь третий протокол — AmneziaWG** (обфусцированный WireGuard) как
+4. **Добавь второй протокол — AmneziaWG** (обфусцированный WireGuard) как
    независимый резерв. В sing-box AmneziaWG-обфускация не поддерживается напрямую,
    поэтому его проще держать **отдельным каналом** через приложение
    [AmneziaVPN](https://amnezia.org) на том же VPS и переключаться на него вручную,
-   когда обе TLS/QUIC-схемы придавили.
+   когда Reality придавили.
 5. **Транспорт XHTTP/gRPC для Reality** — при особо агрессивных волнах против
    VLESS-over-TCP помогает завернуть Reality в XHTTP. Это правка inbound/outbound
    `transport` с обеих сторон (см. документацию sing-box `V2Ray Transport`).
@@ -49,8 +49,7 @@ journalctl -u sing-box -n 100 --no-pager
 Заведи **второй VPS** (другой провайдер/IP, можно соседняя ЕС-страна) и повтори
 `setup-singbox-latvia.sh`. Затем в `configs/singbox-client.local.json`:
 
-- добавь ещё два outbound (`vless-reality-2`, `hysteria2-2`) со значениями
-  второго сервера;
+- добавь ещё один outbound (`vless-reality-2`) со значениями второго сервера;
 - впиши их в список `outbounds` у `auto` (`urltest`) и `proxy`.
 
 Теперь падение или блокировка целого сервера тоже переживается автоматически.

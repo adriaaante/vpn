@@ -5,7 +5,7 @@
 #   vpn on | off | restart       включить / выключить / перезапустить
 #   vpn status                   полная диагностика (по умолчанию)
 #   vpn mode  [strict|full|selective|status]   режим маршрутизации
-#   vpn proto [auto|reality|hysteria2|status|test]   выбор протокола
+#   vpn proto [auto|reality|status|test]       выбор протокола
 #   vpn killswitch [on|off|status]             защита от утечки IP
 #   vpn help                     справка
 #

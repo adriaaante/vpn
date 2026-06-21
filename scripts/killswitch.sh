@@ -52,7 +52,7 @@ ensure_ru_list() {
 }
 
 server_ip() {
-  # IP сервера (vless/hysteria2): берём ТОЛЬКО значения "server", похожие на IPv4,
+  # IP сервера (vless): берём ТОЛЬКО значения "server", похожие на IPv4,
   # исключая DoH (1.1.1.1) и loopback. NB: НЕ хватать "server":"dns-local" из DNS.
   grep -oE '"server": *"[0-9]{1,3}(\.[0-9]{1,3}){3}"' "$CFG" 2>/dev/null \
     | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}' \
