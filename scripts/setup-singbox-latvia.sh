@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 #
 # setup-singbox-latvia.sh
-# Провижининг VPS в Латвии: ставит sing-box и поднимает ДВЕ точки входа:
-#   - VLESS + Vision + Reality (TCP/443)  -> основной, скрытный
-#   - Hysteria2                (UDP/443)  -> быстрый резерв
-# Генерирует все секреты, открывает порты, печатает значения для клиента.
+# Провижининг VPS в Латвии: ставит sing-box и поднимает точку входа:
+#   - VLESS + Vision + Reality (TCP/443)  -> скрытный канал
+# Генерирует все секреты, открывает порт, печатает значения для клиента.
 #
 # Запуск (на чистом Debian/Ubuntu VPS, под root):
 #   bash scripts/setup-singbox-latvia.sh
@@ -102,11 +101,10 @@ UNIT
 
 open_firewall() {
   if command -v ufw >/dev/null 2>&1; then
-    echo "[*] Открываю 443/tcp и 443/udp в ufw..."
+    echo "[*] Открываю 443/tcp в ufw..."
     ufw allow 443/tcp >/dev/null 2>&1 || true
-    ufw allow 443/udp >/dev/null 2>&1 || true
   else
-    echo "[!] ufw не найден — открой 443/tcp и 443/udp в фаерволе провайдера вручную."
+    echo "[!] ufw не найден — открой 443/tcp в фаерволе провайдера вручную."
   fi
 }
 

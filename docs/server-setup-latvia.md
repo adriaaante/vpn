@@ -1,4 +1,4 @@
-# Сервер: VPS в Латвии + sing-box (VLESS+Reality и Hysteria2)
+# Сервер: VPS в Латвии + sing-box (VLESS+Reality)
 
 ## 1. Выбор VPS
 
@@ -29,11 +29,10 @@ bash scripts/setup-singbox-latvia.sh
 
 Скрипт:
 1. ставит `sing-box` из официальных релизов;
-2. генерирует ключи Reality, UUID, short-id, пароль Hysteria2 и самоподписанный
-   сертификат;
+2. генерирует ключи Reality, UUID и short-id;
 3. собирает `/etc/sing-box/config.json` из `configs/singbox-server.template.json`;
 4. поднимает systemd-сервис `sing-box` (автозапуск при перезагрузке сервера);
-5. открывает `443/tcp` и `443/udp` (если есть `ufw`);
+5. открывает `443/tcp` (если есть `ufw`);
 6. **печатает значения для клиента** и сохраняет их в `/etc/sing-box/credentials.txt`.
 
 ### Сменить SNI (по желанию)
@@ -50,17 +49,16 @@ REALITY_SNI=www.icloud.com bash scripts/setup-singbox-latvia.sh
 ```bash
 systemctl status sing-box          # active (running)
 ss -tlnp | grep 443                 # слушается 443/tcp
-ss -ulnp | grep 443                 # слушается 443/udp
 sing-box check -c /etc/sing-box/config.json   # конфиг валиден
 ```
 
-Порты в фаерволе провайдера (панель управления VPS) тоже должны быть открыты:
-**443 TCP и 443 UDP**.
+Порт в фаерволе провайдера (панель управления VPS) тоже должен быть открыт:
+**443 TCP**.
 
 ## 4. Что дальше
 
 Скопируй напечатанные значения (`SERVER_IP`, `VLESS_UUID`, `REALITY_SNI`,
-`REALITY_PUBLIC_KEY`, `REALITY_SHORT_ID`, `HYSTERIA2_PASSWORD`) и переходи к
+`REALITY_PUBLIC_KEY`, `REALITY_SHORT_ID`) и переходи к
 настройке Mac: [`macos-client-setup.md`](macos-client-setup.md).
 
 > ⚠️ `credentials.txt` и сертификаты — секреты. Не коммить их и никому не передавай.

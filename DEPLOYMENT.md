@@ -5,8 +5,7 @@
 
 ## Сервер (VPS, Латвия/ЕС, Debian 13)
 - бинарь sing-box: `/usr/local/bin/sing-box`
-- конфиг: `/etc/sing-box/config.json` (VLESS+Reality TCP/443 + Hysteria2 UDP/443)
-- сертификат Hysteria2: `/etc/sing-box/cert.pem`, `/etc/sing-box/key.pem`
+- конфиг: `/etc/sing-box/config.json` (VLESS+Reality TCP/443)
 - **секреты/значения для клиента**: `/etc/sing-box/credentials.txt` (НЕ коммитить)
 - автозапуск: `/etc/systemd/system/sing-box.service`
 - репозиторий: `/root/vpn`
@@ -18,8 +17,8 @@ apt-get update && apt-get install -y git
 git clone -b <branch> https://github.com/<owner>/vpn && cd vpn
 bash scripts/setup-singbox-latvia.sh
 ```
-Скрипт печатает 6 значений для клиента (SERVER_IP, VLESS_UUID, REALITY_SNI,
-REALITY_PUBLIC_KEY, REALITY_SHORT_ID, HYSTERIA2_PASSWORD).
+Скрипт печатает 5 значений для клиента (SERVER_IP, VLESS_UUID, REALITY_SNI,
+REALITY_PUBLIC_KEY, REALITY_SHORT_ID).
 
 ## Mac (Apple Silicon)
 - репозиторий: `~/vpn`
