@@ -81,10 +81,26 @@ install_daemon() {
   # Три готовых режима маршрутизации:
   #   strict    = ВЕСЬ трафик через Латвию (даже RU) — максимально скрыто
   #   full      = умный: зарубеж через Латвию, RU напрямую (final: proxy + RU->direct)
-  #   selective = только сервисы через Латвию (final: direct)
+  #   selective = только сервисы через Латвию, RU напрямую, ВСЁ прочее -> reject
+  #               (leak-proof: рос. IP не утекает никуда; как профиль selective на iPhone)
   sudo cp "$LOCAL_CFG" /etc/sing-box/config-full.json
-  sed 's/"final": "proxy"/"final": "direct"/' "$LOCAL_CFG" \
-    | sudo tee /etc/sing-box/config-selective.json >/dev/null
+  # selective (leak-proof): сервисы+инфра YouTube/Telegram -> Латвия, RU -> напрямую,
+  # всё остальное зарубежное -> reject. Зеркалит make-ios-configs.sh, чтобы мак=айфон.
+  python3 - "$LOCAL_CFG" <<'PY' | sudo tee /etc/sing-box/config-selective.json >/dev/null
+import json,sys
+d=json.load(open(sys.argv[1])); r=d["route"]
+r["rules"].append({"domain_suffix": [
+    "google.com","googleapis.com","gstatic.com","googleusercontent.com",
+    "gvt1.com","gvt2.com","youtube-nocookie.com"
+], "outbound":"proxy"})
+r["rules"].append({"ip_cidr": [
+    "91.108.0.0/16","149.154.160.0/20","95.161.64.0/20",
+    "185.76.151.0/24","91.105.192.0/23",
+    "2001:67c:4e8::/48","2001:b28:f23d::/48","2001:b28:f23f::/48","2001:b28:f242::/48"
+], "outbound":"proxy"})
+r["rules"].append({"ip_cidr":["0.0.0.0/0","::/0"],"action":"reject"})
+print(json.dumps(d,indent=2,ensure_ascii=False))
+PY
   # strict: берём full и УБИРАЕМ правила «RU -> direct», чтобы RU тоже шёл через туннель
   python3 - "$LOCAL_CFG" <<'PY' | sudo tee /etc/sing-box/config-strict.json >/dev/null
 import json,sys
