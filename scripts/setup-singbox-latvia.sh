@@ -22,7 +22,9 @@ CONFIG="$SB_DIR/config.json"
 CRED="$SB_DIR/credentials.txt"
 
 # --- SNI для Reality: крупный, реально доступный сайт (можно сменить) ---
-REALITY_SNI="${REALITY_SNI:-www.microsoft.com}"
+# Приоритет проставляется в gen_secrets: заданный через окружение (осознанная
+# смена SNI) > существующий из конфига (идемпотентность) > дефолт.
+REALITY_SNI_ENV="${REALITY_SNI:-}"
 
 require_root() {
   if [[ "$(id -u)" -ne 0 ]]; then
@@ -79,6 +81,14 @@ gen_secrets() {
     VLESS_UUID="$(sing-box generate uuid)"
     REALITY_SHORT_ID="$(sing-box generate rand --hex 8)"
   fi
+  # SNI тоже идемпотентен: окружение > существующий из конфига > дефолт.
+  # Иначе повторный запуск сбросил бы SNI на дефолт и тоже сломал бы клиентов.
+  if [[ -n "${REALITY_SNI_ENV:-}" ]]; then
+    REALITY_SNI="$REALITY_SNI_ENV"
+  elif [[ -f "$CONFIG" ]]; then
+    REALITY_SNI="$(grep -o '"server_name"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+  fi
+  REALITY_SNI="${REALITY_SNI:-www.microsoft.com}"
 }
 
 render_config() {
