@@ -8,7 +8,8 @@
 # Запуск (на чистом Debian/Ubuntu VPS, под root):
 #   bash scripts/setup-singbox-latvia.sh
 #
-# Идемпотентный: повторный запуск пересоберёт конфиг и перезапустит сервис.
+# Идемпотентный: повторный запуск ПЕРЕИСПОЛЬЗУЕТ существующие ключи (не ломает
+# клиентов), пересобирает конфиг и перезапускает сервис.
 # Все секреты сохраняются в /etc/sing-box/credentials.txt (не коммитить!).
 
 set -euo pipefail
@@ -57,13 +58,27 @@ install_singbox() {
 
 gen_secrets() {
   mkdir -p "$SB_DIR"
-  echo "[*] Генерирую ключи и секреты..."
-  local kp
-  kp="$(sing-box generate reality-keypair)"
-  REALITY_PRIVATE_KEY="$(echo "$kp" | awk '/PrivateKey/{print $2}')"
-  REALITY_PUBLIC_KEY="$(echo "$kp" | awk '/PublicKey/{print $2}')"
-  VLESS_UUID="$(sing-box generate uuid)"
-  REALITY_SHORT_ID="$(sing-box generate rand --hex 8)"
+  # Идемпотентность: если на сервере УЖЕ есть конфиг с ключами — ПЕРЕИСПОЛЬЗУЕМ их.
+  # Иначе повторный запуск сгенерил бы новые ключи и молча сломал ВСЕ существующие
+  # клиенты (Reality: "processed invalid connection"). private_key/uuid/short_id берём
+  # из config.json (там они есть), public_key — из credentials.txt (в конфиге его нет).
+  if [[ -f "$CONFIG" ]]; then
+    REALITY_PRIVATE_KEY="$(grep -o '"private_key"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+    VLESS_UUID="$(grep -o '"uuid"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+    REALITY_SHORT_ID="$(grep -o '"short_id"[[:space:]]*:[[:space:]]*\[[[:space:]]*"[^"]*"' "$CONFIG" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
+    [[ -f "$CRED" ]] && REALITY_PUBLIC_KEY="$(sed -n 's/^[[:space:]]*REALITY_PUBLIC_KEY[[:space:]]*=[[:space:]]*//p' "$CRED" | head -1)"
+  fi
+  if [[ -n "${REALITY_PRIVATE_KEY:-}" && -n "${REALITY_PUBLIC_KEY:-}" && -n "${VLESS_UUID:-}" && -n "${REALITY_SHORT_ID:-}" ]]; then
+    echo "[*] Найдены существующие ключи — ПЕРЕИСПОЛЬЗУЮ (idempotent). Клиенты НЕ сломаются."
+  else
+    echo "[*] Генерирую новые ключи и секреты..."
+    local kp
+    kp="$(sing-box generate reality-keypair)"
+    REALITY_PRIVATE_KEY="$(echo "$kp" | awk '/PrivateKey/{print $2}')"
+    REALITY_PUBLIC_KEY="$(echo "$kp" | awk '/PublicKey/{print $2}')"
+    VLESS_UUID="$(sing-box generate uuid)"
+    REALITY_SHORT_ID="$(sing-box generate rand --hex 8)"
+  fi
 }
 
 render_config() {
