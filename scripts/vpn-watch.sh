@@ -20,18 +20,30 @@ pgrep -x sing-box >/dev/null 2>&1 || exit 0
 
 # Health-check: процесс жив, но трафик не идёт (завис) → авто-перезапуск демона.
 # Защита от петли: нужно 5 неудач подряд (~100с) И не чаще 1 рестарта в 5 минут.
+# Circuit-breaker: если 3 перезапуска подряд НЕ помогли (туннель реально сломан/
+# сервер отвергает), туннель ВЫКЛЮЧАЕТСЯ. Иначе sing-box продолжает долбить сервер
+# сотнями переподключений — и DDoS-защита провайдера (напр. EDIS) банит наш IP.
 HEALTH="$HOME/.cache/vpn-health-fails"
 LASTR="$HOME/.cache/vpn-last-restart"
+RCNT="$HOME/.cache/vpn-restart-count"
 if curl -fsS --max-time 6 -o /dev/null https://www.gstatic.com/generate_204 2>/dev/null; then
-  echo 0 > "$HEALTH"
+  echo 0 > "$HEALTH"; echo 0 > "$RCNT"   # связь есть — сбрасываем счётчики
 else
   fails=$(( $(cat "$HEALTH" 2>/dev/null || echo 0) + 1 ))
   echo "$fails" > "$HEALTH"
   now=$(date +%s); last=$(cat "$LASTR" 2>/dev/null || echo 0)
   if [[ "$fails" -ge 5 ]] && (( now - last > 300 )); then
-    sudo launchctl kickstart -k system/com.user.singbox >/dev/null 2>&1 || true
-    echo 0 > "$HEALTH"; echo "$now" > "$LASTR"
-    osascript -e 'display notification "sing-box завис — перезапущен" with title "VPN: авто-восстановление" sound name "Submarine"' >/dev/null 2>&1 || true
+    rc=$(( $(cat "$RCNT" 2>/dev/null || echo 0) + 1 ))
+    if [[ "$rc" -le 3 ]]; then
+      sudo launchctl kickstart -k system/com.user.singbox >/dev/null 2>&1 || true
+      echo 0 > "$HEALTH"; echo "$now" > "$LASTR"; echo "$rc" > "$RCNT"
+      osascript -e "display notification \"sing-box завис — перезапущен (попытка $rc/3)\" with title \"VPN: авто-восстановление\" sound name \"Submarine\"" >/dev/null 2>&1 || true
+    else
+      # 3 рестарта не помогли — туннель сломан. Выключаем, чтобы не флудить сервер.
+      sudo launchctl bootout system /Library/LaunchDaemons/com.user.singbox.plist >/dev/null 2>&1 || true
+      echo 0 > "$HEALTH"; echo "$now" > "$LASTR"
+      osascript -e 'display notification "Туннель не поднимается — ВЫКЛЮЧЕН, чтобы не флудить сервер (защита от бана IP). Проверь сервер и включи вручную: vpn on" with title "VPN: аварийное отключение" sound name "Submarine"' >/dev/null 2>&1 || true
+    fi
   fi
 fi
 
