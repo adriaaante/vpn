@@ -72,7 +72,7 @@ if os.environ["FLOW"]: u["flow"]=os.environ["FLOW"]
 else: u.pop("flow",None)
 json.dump(d,open(p,"w"),indent=2)
 PY
-sing-box check -c "$CFG" >/dev/null 2>&1 && echo "[*] боевой конфиг валиден" || { echo "[X] конфиг сломан — откат"; cp "$CFG".bak.* "$CFG" 2>/dev/null; exit 3; }
+sing-box check -c "$CFG" >/dev/null 2>&1 && echo "[*] боевой конфиг валиден" || { echo "[X] конфиг сломан — откат"; cp "$(ls -1t "$CFG".bak.* 2>/dev/null | head -1)" "$CFG" 2>/dev/null; exit 3; }
 echo "$NPUB" > /etc/sing-box/reality_public_key.txt
 systemctl restart sing-box; sleep 2
 echo "[*] sing-box service: $(systemctl is-active sing-box)"

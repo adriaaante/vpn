@@ -16,20 +16,25 @@ PORT=8080
 
 IP=$(curl -fsSL --max-time 6 https://api.ipify.org 2>/dev/null || echo 192.36.41.201)
 UUID=$(python3 -c "import json;print(json.load(open('$CFG'))['inbounds'][0]['users'][0]['uuid'])")
-SNI=$(python3 -c "import json;print(json.load(open('$CFG'))['inbounds'][0]['tls']['server_name'])")
 SID=$(python3 -c "import json;r=json.load(open('$CFG'))['inbounds'][0]['tls']['reality']['short_id'];print(r[0] if isinstance(r,list) else r)")
 FLOW=$(python3 -c "import json;print(json.load(open('$CFG'))['inbounds'][0]['users'][0].get('flow',''))")
 PBK=$(tr -d '[:space:]' < /etc/sing-box/reality_public_key.txt)
 
+# Конфиги содержат UUID/short_id (учётные данные клиента) и раздаются по ОТКРЫТОМУ
+# HTTP. Порт 8080 закрываем при выходе (Ctrl+C/ошибка) и чистим /tmp/ios, чтобы не
+# держать учётки доступными и не оставлять дыру в фаерволе.
+cleanup() { ufw delete allow "${PORT}/tcp" >/dev/null 2>&1 || true; rm -rf /tmp/ios; }
+trap cleanup EXIT INT TERM
+
 mkdir -p /tmp/ios
-IP="$IP" UUID="$UUID" SNI="$SNI" SID="$SID" FLOW="$FLOW" PBK="$PBK" TPL="$TPL" python3 <<'PY'
+IP="$IP" UUID="$UUID" SID="$SID" FLOW="$FLOW" PBK="$PBK" TPL="$TPL" python3 <<'PY'
 import json,os,copy
 # Домены-прикрытия для авто-failover (urltest). Сервер держит один на 443; клиент
 # держит все — работает тот, что совпал с серверным; если отвалится, urltest сам прыгнет.
 DECOYS=["www.apple.com","www.cloudflare.com","dl.google.com","addons.mozilla.org"]
 IP=os.environ['IP'];UUID=os.environ['UUID'];SID=os.environ['SID'];FLOW=os.environ['FLOW'];PBK=os.environ['PBK']
 tpl=open(os.environ['TPL']).read()
-for k,v in {"__SERVER_IP__":IP,"__VLESS_UUID__":UUID,"__REALITY_SNI__":os.environ['SNI'],
+for k,v in {"__SERVER_IP__":IP,"__VLESS_UUID__":UUID,
             "__REALITY_PUBLIC_KEY__":PBK,"__REALITY_SHORT_ID__":SID,"__CLASH_SECRET__":"x"}.items():
     tpl=tpl.replace(k,v)
 src=json.loads(tpl)
