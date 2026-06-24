@@ -3,11 +3,13 @@
 # vpn-proto.sh — выбор протокола «на лету» через Clash API sing-box.
 # Работает БЕЗ sudo и БЕЗ перезапуска демона (живое переключение).
 #
-#   vpn-proto auto         авто-проверка связи (urltest) — по умолчанию
-#   vpn-proto reality      зафиксировать VLESS+Reality (TCP)
-#   vpn-proto status       что выбрано и какой протокол реально активен
+#   vpn-proto auto         авто-выбор домена-прикрытия (urltest) — по умолчанию
+#   vpn-proto status       какой домен сейчас реально активен
+#   vpn-proto test         пинг активного домена
 #
-# В схеме один протокол — VLESS+Reality; auto просто следит за его связью.
+# Multi-decoy: клиент держит несколько Reality-доменов (apple/cloudflare/google/
+# mozilla) в одном urltest; работает совпавший с сервером, при отвале — failover.
+# Фиксировать один домен НЕ нужно (сломается при авто-смене на сервере) — только auto.
 #
 # Выбор сохраняется в cache.db и переживает перезапуск/сон.
 
@@ -37,7 +39,7 @@ switch() {
 cmd="${1:-status}"
 case "$cmd" in
   auto)              switch "auto" ;;
-  reality|vless)     switch "vless-reality" ;;
+  reality|vless)     echo "Multi-decoy: фиксировать один домен нельзя (сломается при авто-смене). Ставлю auto."; switch "auto" ;;
   status)
     sel="$(now_of proxy)"
     echo "Выбрано: ${sel:-неизвестно}"
@@ -52,5 +54,5 @@ case "$cmd" in
     echo "Пинг $target: ${d:-таймаут} ms"
     ;;
   *)
-    echo "Использование: vpn-proto auto|reality|status|test"; exit 1 ;;
+    echo "Использование: vpn-proto auto|status|test"; exit 1 ;;
 esac

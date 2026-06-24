@@ -59,7 +59,16 @@ delayof() { api "proxies/$1" | python3 -c 'import sys,json
 try:
  h=json.load(sys.stdin).get("history",[]); print(h[-1].get("delay","") if h else "")
 except Exception: print("")' 2>/dev/null; }
-fname() { case "$1" in vless-reality) echo "Reality (TCP)";; auto) echo "авто";; "") echo "…";; *) echo "$1";; esac; }
+# tag активного outbound -> домен-прикрытие (multi-decoy)
+fname() { case "$1" in
+  vless-reality)      echo "apple.com";;
+  reality-cloudflare) echo "cloudflare.com";;
+  reality-google)     echo "google.com";;
+  reality-mozilla)    echo "mozilla.org";;
+  auto)               echo "авто";;
+  "")                 echo "…";;
+  *)                  echo "$1";;
+esac; }
 mark() { [ "$1" = "$2" ] && printf ' ✓' || printf ''; }
 
 # страна выхода — из кэша последней ручной проверки (НЕ в фоне)
@@ -93,9 +102,9 @@ if pgrep -x sing-box >/dev/null 2>&1; then
   [ "$mode" != "selective" ] && echo "→ Только сервисы | bash=\"$MODE_SH\" param1=selective terminal=false refresh=true"
   echo "---"
   dtxt=""; { [ -n "$d" ] && [ "$d" != "0" ]; } && dtxt=" · ${d} ms"
-  echo "Протокол: $(fname "$actv")${dtxt}"
-  echo "--Авто$(mark "$sel" auto) | bash=\"$PROTO_SH\" param1=auto terminal=false refresh=true"
-  echo "--Reality (TCP)$(mark "$sel" vless-reality) | bash=\"$PROTO_SH\" param1=reality terminal=false refresh=true"
+  echo "Протокол: Reality · домен $(fname "$actv")${dtxt}"
+  echo "--Авто — failover по доменам$(mark "$sel" auto) | bash=\"$PROTO_SH\" param1=auto terminal=false refresh=true"
+  echo "--🌐 Активный домен: $(fname "$actv") (сервер сам меняет, если отвалится)"
   echo "--🚀 Проверить пинг | bash=\"$PROTO_SH\" param1=test terminal=false refresh=true"
   echo "---"
   if [ "$ks_state" = "ok" ]; then

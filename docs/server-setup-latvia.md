@@ -35,14 +35,17 @@ bash scripts/setup-singbox-latvia.sh
 5. открывает `443/tcp` (если есть `ufw`);
 6. **печатает значения для клиента** и сохраняет их в `/etc/sing-box/credentials.txt`.
 
-### Сменить SNI (по желанию)
-Reality маскируется под визит к реальному сайту. По умолчанию `www.microsoft.com`.
-Можно задать другой крупный, точно доступный в РФ сайт:
+### Сменить SNI / домен-прикрытие (по желанию)
+Reality «одалживает» рукопожатие у реального сайта. По умолчанию `www.apple.com`
+(проверенный рабочий decoy). **Важно:** не каждый сайт годится — `www.microsoft.com`
+в какой-то момент перестал «одалживаться» и ронял Reality (`processed invalid
+connection`). Поэтому клиент держит сразу несколько доменов в `urltest`, а сервер
+сам переключается через `decoy-monitor.sh`. Сменить вручную:
 ```bash
-REALITY_SNI=www.icloud.com bash scripts/setup-singbox-latvia.sh
+REALITY_SNI=www.cloudflare.com bash scripts/setup-singbox-latvia.sh
 ```
-Требования к SNI: сайт должен поддерживать TLS 1.3 + HTTP/2, быть «не подозрительным»
-и реально доступным из России (иначе под белыми списками маскировка не сработает).
+Требования к SNI: TLS 1.3 + HTTP/2, доступен из РФ, и реально «одалживается»
+(проверить: `scripts/reality-env-check.sh`). Рабочие: apple/cloudflare/google/mozilla.
 
 ## 3. Проверка сервера
 

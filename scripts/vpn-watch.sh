@@ -54,8 +54,11 @@ now_of() { curl -fsS --max-time 3 -H "Authorization: Bearer $SECRET" "http://$CT
 
 name() {
   case "$1" in
-    vless-reality) echo "VLESS+Reality (TCP)";;
-    *)             echo "$1";;
+    vless-reality)      echo "Reality · apple.com";;
+    reality-cloudflare) echo "Reality · cloudflare.com";;
+    reality-google)     echo "Reality · google.com";;
+    reality-mozilla)    echo "Reality · mozilla.org";;
+    *)                  echo "$1";;
   esac
 }
 

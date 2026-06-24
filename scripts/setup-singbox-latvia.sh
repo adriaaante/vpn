@@ -88,7 +88,7 @@ gen_secrets() {
   elif [[ -f "$CONFIG" ]]; then
     REALITY_SNI="$(grep -o '"server_name"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
   fi
-  REALITY_SNI="${REALITY_SNI:-www.microsoft.com}"
+  REALITY_SNI="${REALITY_SNI:-www.apple.com}"
 }
 
 render_config() {
