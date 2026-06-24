@@ -63,25 +63,40 @@ run_suite() {
   echo -n "    Reality БЕЗ flow      : "; loop_test no  10902 18902 && NF=ok || NF=fail
 }
 
+# dl_singbox <tag> — скачать и установить sing-box указанной версии; 0/1
+dl_singbox() {
+  local tag="$1" ver="${1#v}" arch=amd64 t rc
+  case "$(uname -m)" in aarch64|arm64) arch=arm64;; esac
+  t=$(mktemp -d)
+  if curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/${tag}/sing-box-${ver}-linux-${arch}.tar.gz" -o "$t/s.tgz" 2>/dev/null \
+     && tar -xzf "$t/s.tgz" -C "$t" 2>/dev/null \
+     && install -m755 "$t/sing-box-${ver}-linux-${arch}/sing-box" /usr/local/bin/sing-box 2>/dev/null; then
+    rc=0
+  else
+    rc=1
+  fi
+  rm -rf "$t"; return $rc
+}
+
 echo "[*] Проба №1 (текущий бинарь):"
 WF=fail; NF=fail; run_suite
 
 if [[ "$WF" = fail && "$NF" = fail ]]; then
-  echo "[!] Оба варианта упали — переустанавливаю sing-box (свежий релиз)..."
-  arch=amd64; case "$(uname -m)" in aarch64|arm64) arch=arm64;; esac
-  tmp=$(mktemp -d)
-  curl -fsSL https://api.github.com/repos/SagerNet/sing-box/releases/latest -o "$tmp/rel.json"
-  tag=$(grep -m1 '"tag_name"' "$tmp/rel.json" | cut -d'"' -f4); ver=${tag#v}
-  if curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/${tag}/sing-box-${ver}-linux-${arch}.tar.gz" -o "$tmp/sb.tgz"; then
-    tar -xzf "$tmp/sb.tgz" -C "$tmp"
-    install -m755 "$tmp/sing-box-${ver}-linux-${arch}/sing-box" /usr/local/bin/sing-box
-    echo "[*] Переустановлено: $(sing-box version | head -1)"
-    echo "[*] Проба №2 (после переустановки):"
-    run_suite
-  else
-    echo "[!] Не удалось скачать sing-box — проверь интернет сервера."
-  fi
-  rm -rf "$tmp"
+  echo "[!] Reality падает на текущем бинаре. Перебираю версии sing-box..."
+  # тег latest берём через redirect /releases/latest (api.github.com бывает 500)
+  LATEST=$(curl -fsSLI https://github.com/SagerNet/sing-box/releases/latest 2>/dev/null | tr -d '\r' | sed -nE 's#^[Ll]ocation:.*/tag/(.*)#\1#p' | tail -1)
+  for tag in "$LATEST" v1.12.9 v1.11.15 v1.11.11 v1.10.7; do
+    [[ -z "$tag" ]] && continue
+    echo "[*] Ставлю sing-box $tag ..."
+    if dl_singbox "$tag"; then
+      echo "[*] Версия теперь: $(sing-box version | head -1)"
+      echo "[*] Повторная проба:"
+      run_suite
+      if [[ "$WF" = ok || "$NF" = ok ]]; then echo "[*] Reality заработал на $tag!"; break; fi
+    else
+      echo "[!] $tag не скачался — пробую следующую версию..."
+    fi
+  done
 fi
 
 # Выбор рабочей схемы
