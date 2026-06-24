@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 #
-# make-ios-configs-server.sh — собирает 3 iOS-конфига (умный/strict/selective) из
-# ТЕКУЩЕГО серверного конфига и раздаёт их по HTTP, чтобы импортировать на айфон
-# как Remote-профили (без Mac). Запускать на сервере.
+# make-ios-configs-server.sh — собирает 3 iOS-конфига (умный/strict/selective) с
+# АВТОНОМНЫМ failover по доменам-прикрытиям (4 outbound в urltest) из текущего
+# серверного конфига и раздаёт их по HTTP для импорта на айфон как Remote-профили.
 #   cd /root/vpn && git pull origin main && bash scripts/make-ios-configs-server.sh
-# На айфоне (по СОТОВОЙ связи, не Wi-Fi) добавить 3 Remote-профиля по ссылкам ниже.
-# Конфиги содержат твой uuid — раздача временная, по HTTP; останови Ctrl+C после импорта.
+# На айфоне (по СОТОВОЙ связи) добавить 3 Remote-профиля по ссылкам ниже. Ctrl+C после.
 
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,16 +24,32 @@ PBK=$(tr -d '[:space:]' < /etc/sing-box/reality_public_key.txt)
 mkdir -p /tmp/ios
 IP="$IP" UUID="$UUID" SNI="$SNI" SID="$SID" FLOW="$FLOW" PBK="$PBK" TPL="$TPL" python3 <<'PY'
 import json,os,copy
+# Домены-прикрытия для авто-failover (urltest). Сервер держит один на 443; клиент
+# держит все — работает тот, что совпал с серверным; если отвалится, urltest сам прыгнет.
+DECOYS=["www.apple.com","www.cloudflare.com","dl.google.com","addons.mozilla.org"]
+IP=os.environ['IP'];UUID=os.environ['UUID'];SID=os.environ['SID'];FLOW=os.environ['FLOW'];PBK=os.environ['PBK']
 tpl=open(os.environ['TPL']).read()
-for k,v in {"__SERVER_IP__":os.environ['IP'],"__VLESS_UUID__":os.environ['UUID'],
-            "__REALITY_SNI__":os.environ['SNI'],"__REALITY_PUBLIC_KEY__":os.environ['PBK'],
-            "__REALITY_SHORT_ID__":os.environ['SID'],"__CLASH_SECRET__":"x"}.items():
+for k,v in {"__SERVER_IP__":IP,"__VLESS_UUID__":UUID,"__REALITY_SNI__":os.environ['SNI'],
+            "__REALITY_PUBLIC_KEY__":PBK,"__REALITY_SHORT_ID__":SID,"__CLASH_SECRET__":"x"}.items():
     tpl=tpl.replace(k,v)
 src=json.loads(tpl)
-for o in src["outbounds"]:
-    if o.get("type")=="vless":
-        if os.environ['FLOW']: o["flow"]=os.environ['FLOW']
-        else: o.pop("flow",None)
+
+def vless(tag,sni):
+    o={"type":"vless","tag":tag,"server":IP,"server_port":443,"uuid":UUID,
+       "tls":{"enabled":True,"server_name":sni,"utls":{"enabled":True,"fingerprint":"chrome"},
+              "reality":{"enabled":True,"public_key":PBK,"short_id":SID}}}
+    if FLOW: o["flow"]=FLOW
+    return o
+tags=[]; vs=[]
+for d in DECOYS:
+    t="reality-"+d.split(".")[-2]; tags.append(t); vs.append(vless(t,d))
+src["outbounds"]=[
+    {"type":"selector","tag":"proxy","outbounds":["auto"]+tags,"default":"auto"},
+    {"type":"urltest","tag":"auto","outbounds":tags,"url":"https://www.gstatic.com/generate_204",
+     "interval":"2m","tolerance":50,"idle_timeout":"30m","interrupt_exist_connections":False},
+    *vs,
+    {"type":"direct","tag":"direct"}]
+
 def base():
     d=copy.deepcopy(src)
     d["inbounds"]=[{"type":"tun","tag":"tun-in","address":["172.19.0.1/30","fdfe:dcba:9876::1/126"],
@@ -60,19 +75,19 @@ r["rules"].append({"ip_cidr":["91.108.0.0/16","149.154.160.0/20","95.161.64.0/20
 r["rules"].append({"ip_cidr":["0.0.0.0/0","::/0"],"action":"reject"})
 for name,cfg in (("full",full),("strict",strict),("selective",sel)):
     json.dump(cfg,open(f"/tmp/ios/{name}.json","w"),indent=2,ensure_ascii=False)
-print("[*] Собраны: full.json (умный), strict.json (Латвия все), selective.json (только сервисы)")
+print("[*] Собраны 3 режима с авто-failover по 4 доменам (apple/cloudflare/google/mozilla)")
 PY
 
 ufw allow "${PORT}/tcp" >/dev/null 2>&1 || true
 echo
 echo "============================================================"
 echo " На АЙФОНЕ (по СОТОВОЙ связи!) sing-box VT -> New Profile ->"
-echo " Type: REMOTE, и по очереди добавь 3 профиля по ссылкам:"
+echo " Type: REMOTE, добавь 3 профиля:"
 echo
 echo "   умный (RU напрямую):  http://$IP:$PORT/full.json"
 echo "   Латвия все:           http://$IP:$PORT/strict.json"
 echo "   только сервисы:       http://$IP:$PORT/selective.json"
 echo "============================================================"
-echo " Раздаю файлы. НЕ закрывай, пока не импортируешь все 3. Потом Ctrl+C."
+echo " Раздаю. НЕ закрывай, пока не импортируешь все 3. Потом Ctrl+C."
 echo
 cd /tmp/ios && python3 -m http.server "$PORT"
