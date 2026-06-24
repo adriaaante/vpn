@@ -42,7 +42,15 @@ install_singbox() {
 
 build_local_cfg() {
   if [[ -f "$LOCAL_CFG" ]]; then
+    # Показываем public_key из переиспользуемого конфига: если на сервере крутили
+    # ключ (fix-reality-sni.sh всегда генерит свежий), старый конфиг молча не
+    # подключится (Reality "invalid connection"). Сверь с тем, что напечатал сервер.
+    local pk
+    pk="$(grep -o '"public_key"[[:space:]]*:[[:space:]]*"[^"]*"' "$LOCAL_CFG" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
     echo "[*] Использую существующий $LOCAL_CFG"
+    echo "    public_key в нём: ${pk:-?}"
+    echo "    Сверь с REALITY_PUBLIC_KEY сервера. Если НЕ совпадает — удали конфиг и"
+    echo "    запусти заново, чтобы ввести свежие значения:  rm \"$LOCAL_CFG\""
     return
   fi
   echo "[*] Введи значения, которые напечатал серверный скрипт (setup-singbox-latvia.sh):"
