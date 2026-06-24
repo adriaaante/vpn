@@ -48,15 +48,15 @@ build_local_cfg() {
   echo "[*] Введи значения, которые напечатал серверный скрипт (setup-singbox-latvia.sh):"
   read -rp "  SERVER_IP          : " SERVER_IP
   read -rp "  VLESS_UUID         : " VLESS_UUID
-  read -rp "  REALITY_SNI        : " REALITY_SNI
   read -rp "  REALITY_PUBLIC_KEY : " REALITY_PUBLIC_KEY
   read -rp "  REALITY_SHORT_ID   : " REALITY_SHORT_ID
   # Локальный секрет для Clash API (нужен переключателю протоколов в меню)
   CLASH_SECRET="$(openssl rand -hex 16)"
+  # SNI больше не вводится: клиент держит фиксированный список доменов-прикрытий
+  # (apple/cloudflare/google/mozilla) в urltest — см. configs/singbox-client.template.json.
   sed \
     -e "s|__SERVER_IP__|$SERVER_IP|g" \
     -e "s|__VLESS_UUID__|$VLESS_UUID|g" \
-    -e "s|__REALITY_SNI__|$REALITY_SNI|g" \
     -e "s|__REALITY_PUBLIC_KEY__|$REALITY_PUBLIC_KEY|g" \
     -e "s|__REALITY_SHORT_ID__|$REALITY_SHORT_ID|g" \
     -e "s|__CLASH_SECRET__|$CLASH_SECRET|g" \
