@@ -24,6 +24,9 @@
   `www.microsoft.com` = **17 символов, без `[`**. Если `len` 44 и `bracket True` —
   значение испорчено markdown.
 - В скриптах подстраховались regex-ом `\[([^\]]+)\]` для вырезания markdown.
+- Чат линкует `www.*` и **в обратную сторону** — когда вставляешь в него вывод
+  скрипта. `vpn-doctor.sh` печатает домен вместе с `len=`: `www.apple.com` = 13,
+  `www.cloudflare.com` = 18. Верь `len`, а не скобкам на экране — сам конфиг цел.
 
 ## ⚠️ Грабля №2 — setup-singbox-latvia.sh раньше менял ключи при каждом запуске
 
@@ -101,6 +104,24 @@ connection` от КАЖДОГО клиента — даже на петле `127
 microsoft → FAIL ⇒ дело в домене, а не в ключах/версии/сети. Чинит
 `scripts/fix-reality-sni.sh` (подбор рабочего decoy + применение со свежим ключом).
 
+## ⚠️ Грабля №5 — «TCP открыт, а TLS не проходит» = режут ПУТЬ, а не сервер
+
+Симптом (сессия 2026-08-20, Ростелеком AS12389): `nc -z SRV 443` говорит OPEN, но
+`openssl s_client` к серверу не завершает хендшейк НИ ПО ОДНОМУ decoy, и так на
+Wi-Fi и на сотовой сразу. При этом с зарубежного хоста тот же сервер отдаёт
+настоящие CN прикрытий, а РФ-ноды check-host по TCP коннектятся.
+
+Читается так: SYN/ACK проходит, ClientHello убивают ⇒ фильтрация рукопожатия на
+пути (ТСПУ), а не смерть сервера, не ключи и не decoy. **Смена decoy тут не лечит** —
+нужен другой порт/IP/транспорт.
+
+Важно: TCP-проба check-host НЕ доказывает, что пройдёт TLS — её ноды в ДЦ, а режут
+потребительские сети.
+
+**Обязателен контрольный хендшейк к чужому живому сайту** (в `vpn-doctor.sh` это
+`www.google.com`): без него нельзя отличить «режут путь» от «сломался openssl»
+(на macOS системный openssl — LibreSSL и умеет отваливаться сам по себе).
+
 ## Архитектура: multi-decoy + авто-failover (мак и айфон в одном формате)
 
 Чтобы отвал любого decoy больше не ронял всё:
@@ -108,11 +129,17 @@ microsoft → FAIL ⇒ дело в домене, а не в ключах/вер�
   (systemd-таймер каждые 15 мин, ставится `install-decoy-monitor.sh`) тестирует
   decoy по петле и САМ переключает `server_name`/`handshake` на рабочий из списка
   apple/cloudflare/google/mozilla.
-- **Клиент (мак И айфон)**: 4 vless-outbound с этими доменами в одном `urltest`
+- **Клиент (мак И айфон)**: 6 vless-outbound с этими доменами в одном `urltest`
   (`auto`). Работает совпавший с сервером; отвалится — urltest сам прыгает.
   Координация не нужна (оба конца знают список). Шаблон `configs/singbox-client.template.json`
   уже multi-decoy; iOS-конфиги — `make-ios-configs[-server].sh`.
 - Тег первого outbound оставлен `vless-reality` (apple) для совместимости с меню/`vpn-proto.sh`.
+- Список decoy (сейчас 6: apple/cloudflare/dl.google/addons.mozilla/icloud/samsung)
+  продублирован в 6 местах и должен совпадать, иначе сервер уедет на домен, которого
+  нет у клиента, и упадёт всё сразу: `configs/singbox-client.template.json`,
+  `scripts/decoy-monitor.sh`, `scripts/make-ios-configs-server.sh`,
+  `scripts/fix-reality-sni.sh`, `scripts/reality-env-check.sh`, `scripts/vpn-doctor.sh`
+  (+ ярлыки в `menubar/vpn.30s.sh` и `scripts/vpn-watch.sh`).
 
 Проверка здоровья сервера: `scripts/server-status.sh` (sing-box, decoy по петле,
 таймер монитора, порт 443, SSH).

@@ -7,7 +7,7 @@
 
 set -uo pipefail
 CFG=/etc/sing-box/config.json
-DECOYS=(www.apple.com www.cloudflare.com dl.google.com addons.mozilla.org)
+DECOYS=(www.apple.com www.cloudflare.com dl.google.com addons.mozilla.org www.icloud.com www.samsung.com)
 log(){ echo "[decoy-monitor] $*"; }
 [[ -f "$CFG" ]] || { log "нет $CFG"; exit 1; }
 

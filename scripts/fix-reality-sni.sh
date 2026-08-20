@@ -46,7 +46,7 @@ PY
 }
 
 SNI=""; FLOW=""
-for cand in www.apple.com www.cloudflare.com dl.google.com addons.mozilla.org; do
+for cand in www.apple.com www.cloudflare.com dl.google.com addons.mozilla.org www.icloud.com www.samsung.com; do
   echo -n "[*] $cand : flow... "
   if loop_test "$cand" yes; then echo "OK"; SNI="$cand"; FLOW="xtls-rprx-vision"; break; fi
   echo -n "без flow... "

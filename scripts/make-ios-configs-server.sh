@@ -31,7 +31,7 @@ IP="$IP" UUID="$UUID" SID="$SID" FLOW="$FLOW" PBK="$PBK" TPL="$TPL" python3 <<'P
 import json,os,copy
 # Домены-прикрытия для авто-failover (urltest). Сервер держит один на 443; клиент
 # держит все — работает тот, что совпал с серверным; если отвалится, urltest сам прыгнет.
-DECOYS=["www.apple.com","www.cloudflare.com","dl.google.com","addons.mozilla.org"]
+DECOYS=["www.apple.com","www.cloudflare.com","dl.google.com","addons.mozilla.org","www.icloud.com","www.samsung.com"]
 IP=os.environ['IP'];UUID=os.environ['UUID'];SID=os.environ['SID'];FLOW=os.environ['FLOW'];PBK=os.environ['PBK']
 tpl=open(os.environ['TPL']).read()
 for k,v in {"__SERVER_IP__":IP,"__VLESS_UUID__":UUID,

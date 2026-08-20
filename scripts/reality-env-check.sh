@@ -38,7 +38,7 @@ PY
   kill "$S" "$C" 2>/dev/null; sleep 1
   printf '  %-24s -> %s\n' "$sni" "${cc:-FAIL}"
 }
-for d in www.microsoft.com www.cloudflare.com addons.mozilla.org www.apple.com dl.google.com; do
+for d in www.microsoft.com www.cloudflare.com addons.mozilla.org www.apple.com dl.google.com www.icloud.com www.samsung.com; do
   test_decoy "$d"
 done
 

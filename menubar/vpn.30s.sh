@@ -65,6 +65,8 @@ fname() { case "$1" in
   reality-cloudflare) echo "cloudflare.com";;
   reality-google)     echo "google.com";;
   reality-mozilla)    echo "mozilla.org";;
+  reality-icloud)     echo "icloud.com";;
+  reality-samsung)    echo "samsung.com";;
   auto)               echo "авто";;
   "")                 echo "…";;
   *)                  echo "$1";;

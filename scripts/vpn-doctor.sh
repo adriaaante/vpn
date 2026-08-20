@@ -117,23 +117,56 @@ if [[ "$MODE" == "client" ]]; then
 
   echo
   echo "=== СЕТЬ ДО СЕРВЕРА (запускать с ВЫКЛЮЧЕННЫМ туннелем) ==="
-  echo -n "  TCP $SRV_IP:443 -> "
-  if nc -z -G 5 "$SRV_IP" 443 >/dev/null 2>&1 \
-     || timeout 6 bash -c "exec 3<>/dev/tcp/$SRV_IP/443" >/dev/null 2>&1; then
-    echo "OPEN"
-  else
-    echo "БЛОКИРОВАН/TIMEOUT  <-- до сервера не достучались"
-  fi
+  tcp_ok() {
+    nc -z -G 5 "$SRV_IP" "$1" >/dev/null 2>&1 \
+      || timeout 6 bash -c "exec 3<>/dev/tcp/$SRV_IP/$1" >/dev/null 2>&1
+  }
+  P443=НЕТ; tcp_ok 443 && P443=да
+  P22=НЕТ;  tcp_ok 22  && P22=да
+  echo "  TCP 443 (наш Reality) открыт : $P443"
+  echo "  TCP 22  (SSH, не-TLS, тот же IP): $P22   <-- если 22 открыт, а 443 нет — режут порт, а не IP"
   echo "  наш выход в интернет: $(curl -s --max-time 8 https://ipinfo.io/country 2>/dev/null | tr -d '\n') / $(curl -s --max-time 8 https://ipinfo.io/org 2>/dev/null)"
 
   echo
-  echo "=== TLS-ХЕНДШЕЙК К СЕРВЕРУ ПО КАЖДОМУ DECOY ==="
-  echo "  (CN прикрытия = сервер жив и одалживает рукопожатие; FAIL = путь режут)"
-  for d in www.apple.com www.cloudflare.com dl.google.com addons.mozilla.org; do
-    cn=$(echo | timeout 12 openssl s_client -connect "$SRV_IP:443" -servername "$d" 2>/dev/null \
-         | sed -n 's/^subject=.*CN *= *//p' | head -1)
-    printf '  %-22s %s\n' "$d" "${cn:-FAIL}"
+  echo "=== TLS-ХЕНДШЕЙК ==="
+  echo "  openssl: $(openssl version 2>/dev/null || echo 'НЕТ')"
+  cn_of()  { echo | timeout 12 openssl s_client -connect "$1:443" -servername "$2" 2>/dev/null \
+             | sed -n 's/^subject=.*CN *= *//p' | head -1; }
+  err_of() { echo | timeout 12 openssl s_client -connect "$1:443" -servername "$2" 2>&1 >/dev/null \
+             | grep -iE 'error|alert|unknown|refus|timed|connect:' | head -1 | cut -c1-64; }
+
+  # КОНТРОЛЬ: чужой заведомо живой сайт. Провалился он — виноват инструмент или
+  # блокируется весь TLS, и проверки по decoy ниже недостоверны (грабля №5).
+  CTRL_CN=$(cn_of www.google.com www.google.com)
+  printf '  контроль www.google.com (чужой сайт): %s\n' "${CTRL_CN:-FAIL}"
+  echo "  --- к нашему серверу, по каждому decoy ---"
+  OKC=0
+  for d in www.apple.com www.cloudflare.com dl.google.com addons.mozilla.org www.icloud.com www.samsung.com; do
+    cn=$(cn_of "$SRV_IP" "$d")
+    if [[ -n "$cn" ]]; then
+      OKC=$((OKC+1)); printf '  %-22s CN=%s\n' "$d" "$cn"
+    else
+      printf '  %-22s FAIL  %s\n' "$d" "$(err_of "$SRV_IP" "$d")"
+    fi
   done
+
+  echo
+  echo "=== ВЕРДИКТ ==="
+  if [[ -z "$CTRL_CN" ]]; then
+    echo "  ⚠️ Контроль к чужому сайту ТОЖЕ провалился — дело в openssl или режется весь TLS."
+    echo "     Строки по decoy сейчас ничего не доказывают. Перепроверь с другой сети."
+  elif (( OKC > 0 )); then
+    echo "  Путь до сервера чист: рукопожатие одалживается ($OKC из 6 decoy)."
+    echo "  Если туннель всё равно мёртв — рассинхрон параметров: сверь отпечатки uuid/"
+    echo "  short_id/ключа с выводом 'bash scripts/vpn-doctor.sh --server' на сервере."
+  elif [[ "$P443" == "да" ]]; then
+    echo "  TCP до сервера проходит, но TLS не проходит НИ ПО ОДНОМУ decoy при живом контроле"
+    echo "  ⇒ рукопожатие режут на пути (DPI/ТСПУ). Сервер, ключи и decoy тут ни при чём —"
+    echo "  менять надо порт/IP сервера или транспорт, а не домен-прикрытие."
+  else
+    echo "  До сервера не доходит даже TCP ⇒ блокировка IP сервера или бан твоего IP у хостера"
+    echo "  (грабля №3). Сверься с check-host.net по TCP 443."
+  fi
 fi
 
 # ---------- сервер ----------

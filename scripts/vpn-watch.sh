@@ -58,6 +58,8 @@ name() {
     reality-cloudflare) echo "Reality · cloudflare.com";;
     reality-google)     echo "Reality · google.com";;
     reality-mozilla)    echo "Reality · mozilla.org";;
+    reality-icloud)     echo "Reality · icloud.com";;
+    reality-samsung)    echo "Reality · samsung.com";;
     *)                  echo "$1";;
   esac
 }
