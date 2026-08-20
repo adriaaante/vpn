@@ -8,26 +8,33 @@
 
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CFG=/etc/sing-box/config.json
+CFG="${CFG:-/etc/sing-box/config.json}"
 TPL="$REPO/configs/singbox-client.template.json"
 PORT=8080
+# Переопределяются из vpn-users.sh, чтобы собрать конфиг ГОСТЯ тем же генератором:
+#   GUEST_UUID — чей ключ класть в конфиг (по умолчанию — первый из серверного)
+#   OUT_DIR    — куда сложить json (по умолчанию /tmp/ios)
+#   SERVE      — 0 = только собрать файлы, не поднимать HTTP-раздачу
+OUT_DIR="${OUT_DIR:-/tmp/ios}"
+SERVE="${SERVE:-1}"
 [[ -f "$TPL" ]] || { echo "Нет $TPL"; exit 1; }
-[[ -f /etc/sing-box/reality_public_key.txt ]] || { echo "Нет публичного ключа — запусти fix-reality-sni.sh"; exit 1; }
+PBKF="${PBKF:-/etc/sing-box/reality_public_key.txt}"
+[[ -f "$PBKF" ]] || { echo "Нет публичного ключа ($PBKF) — запусти fix-reality-sni.sh"; exit 1; }
 
 IP=$(curl -fsSL --max-time 6 https://api.ipify.org 2>/dev/null || echo 89.46.238.74)
-UUID=$(python3 -c "import json;print(json.load(open('$CFG'))['inbounds'][0]['users'][0]['uuid'])")
+UUID="${GUEST_UUID:-$(python3 -c "import json;print(json.load(open('$CFG'))['inbounds'][0]['users'][0]['uuid'])")}"
 SID=$(python3 -c "import json;r=json.load(open('$CFG'))['inbounds'][0]['tls']['reality']['short_id'];print(r[0] if isinstance(r,list) else r)")
 FLOW=$(python3 -c "import json;print(json.load(open('$CFG'))['inbounds'][0]['users'][0].get('flow',''))")
-PBK=$(tr -d '[:space:]' < /etc/sing-box/reality_public_key.txt)
+PBK=$(tr -d '[:space:]' < "$PBKF")
 
 # Конфиги содержат UUID/short_id (учётные данные клиента) и раздаются по ОТКРЫТОМУ
 # HTTP. Порт 8080 закрываем при выходе (Ctrl+C/ошибка) и чистим /tmp/ios, чтобы не
 # держать учётки доступными и не оставлять дыру в фаерволе.
-cleanup() { ufw delete allow "${PORT}/tcp" >/dev/null 2>&1 || true; rm -rf /tmp/ios; }
+cleanup() { [[ "$SERVE" == 1 ]] && ufw delete allow "${PORT}/tcp" >/dev/null 2>&1; rm -rf "$OUT_DIR"; }
 trap cleanup EXIT INT TERM
 
-mkdir -p /tmp/ios
-IP="$IP" UUID="$UUID" SID="$SID" FLOW="$FLOW" PBK="$PBK" TPL="$TPL" python3 <<'PY'
+mkdir -p "$OUT_DIR"
+OUT_DIR="$OUT_DIR" IP="$IP" UUID="$UUID" SID="$SID" FLOW="$FLOW" PBK="$PBK" TPL="$TPL" python3 <<'PY'
 import json,os,copy
 # Домены-прикрытия для авто-failover (urltest). Сервер держит один на 443; клиент
 # держит все — работает тот, что совпал с серверным; если отвалится, urltest сам прыгнет.
@@ -83,9 +90,16 @@ r["rules"].append({"domain_suffix":["google.com","googleapis.com","gstatic.com",
 r["rules"].append({"ip_cidr":["91.108.0.0/16","149.154.160.0/20","95.161.64.0/20","185.76.151.0/24","91.105.192.0/23","2001:67c:4e8::/48","2001:b28:f23d::/48","2001:b28:f23f::/48","2001:b28:f242::/48"],"outbound":"proxy"})
 r["rules"].append({"ip_cidr":["0.0.0.0/0","::/0"],"action":"reject"})
 for name,cfg in (("full",full),("strict",strict),("selective",sel)):
-    json.dump(cfg,open(f"/tmp/ios/{name}.json","w"),indent=2,ensure_ascii=False)
+    json.dump(cfg,open(f"{os.environ['OUT_DIR']}/{name}.json","w"),indent=2,ensure_ascii=False)
 print("[*] Собраны 3 режима с авто-failover по 4 доменам (apple/cloudflare/google/mozilla)")
 PY
+
+if [[ "$SERVE" != 1 ]]; then
+  # Режим "только собрать" — конфиги забирает вызывающий скрипт (vpn-users.sh).
+  trap - EXIT INT TERM
+  echo "[*] Конфиги собраны в $OUT_DIR"
+  exit 0
+fi
 
 ufw allow "${PORT}/tcp" >/dev/null 2>&1 || true
 echo
@@ -99,4 +113,4 @@ echo "   только сервисы:       http://$IP:$PORT/selective.json"
 echo "============================================================"
 echo " Раздаю. НЕ закрывай, пока не импортируешь все 3. Потом Ctrl+C."
 echo
-cd /tmp/ios && python3 -m http.server "$PORT"
+cd "$OUT_DIR" && python3 -m http.server "$PORT"
