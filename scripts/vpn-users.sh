@@ -103,6 +103,9 @@ share() { # собрать и раздать конфиг конкретного
   uuid="$(get_field "$name" uuid)"
   [[ -n "$uuid" ]] || { echo "Нет такого пользователя: $name"; exit 1; }
   [[ "$(get_field "$name" enabled)" == "True" ]] || echo "[!] $name сейчас ОТКЛЮЧЁН — конфиг соберётся, но работать не будет."
+  # Снимаем зависшую прошлую раздачу ДО сборки: её trap делает rm -rf своего
+  # каталога и иначе унёс бы уже готовые файлы (см. make-ios-configs-server.sh).
+  if ss -tln 2>/dev/null | grep -q ":8080 "; then pkill -f "http.server 8080" 2>/dev/null && sleep 2; fi
   out="/tmp/guest-$name"
   rm -rf "$out"
   GUEST_UUID="$uuid" OUT_DIR="$out" SERVE=0 bash "$REPO/scripts/make-ios-configs-server.sh" >/dev/null || {
@@ -120,8 +123,6 @@ share() { # собрать и раздать конфиг конкретного
   echo
   echo " Ctrl+C, как только импортирует: ссылка отдаёт его ключ без пароля."
   echo "============================================================"
-  # см. комментарий в make-ios-configs-server.sh: снимаем зависшую прошлую раздачу
-  if ss -tln 2>/dev/null | grep -q ":8080 "; then pkill -f "http.server 8080" 2>/dev/null && sleep 1; fi
   ufw allow 8080/tcp >/dev/null 2>&1 || true
   trap 'ufw delete allow 8080/tcp >/dev/null 2>&1; rm -rf "$out"' EXIT INT TERM
   cd "$out" && python3 -m http.server 8080

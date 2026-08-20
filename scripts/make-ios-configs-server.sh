@@ -36,6 +36,14 @@ SERVER_HOST="${SERVER_HOST:-$(tr -d '[:space:]' < /etc/sing-box/server-host.txt 
 cleanup() { [[ "$SERVE" == 1 ]] && ufw delete allow "${PORT}/tcp" >/dev/null 2>&1; rm -rf "$OUT_DIR"; }
 trap cleanup EXIT INT TERM
 
+# Прошлая раздача могла остаться висеть (не нажали Ctrl+C) и держать порт.
+# Снимаем её ДО генерации: при завершении у неё срабатывает собственный trap,
+# который делает rm -rf своего каталога — если убить её позже, она унесёт
+# только что собранные конфиги (ловили: "cd: /tmp/ios: No such file or directory").
+if ss -tln 2>/dev/null | grep -q ":$PORT "; then
+  pkill -f "http.server $PORT" 2>/dev/null && sleep 2
+fi
+
 mkdir -p "$OUT_DIR"
 OUT_DIR="$OUT_DIR" SERVER_HOST="$SERVER_HOST" IP="$IP" UUID="$UUID" SID="$SID" FLOW="$FLOW" PBK="$PBK" TPL="$TPL" python3 <<'PY'
 import json,os,copy
@@ -116,14 +124,6 @@ if [[ "$SERVE" != 1 ]]; then
   exit 0
 fi
 
-# Прошлая раздача могла остаться висеть (не нажали Ctrl+C) и держит порт —
-# тогда новая падала с "Address already in use". Снимаем именно свой http.server.
-free_port() {
-  if ss -tln 2>/dev/null | grep -q ":$1 "; then
-    pkill -f "http.server $1" 2>/dev/null && sleep 1
-  fi
-}
-free_port "$PORT"
 ufw allow "${PORT}/tcp" >/dev/null 2>&1 || true
 echo
 echo "============================================================"
