@@ -13,6 +13,7 @@
 """
 import html
 import json
+import re
 import os
 import secrets
 import shutil
@@ -129,11 +130,13 @@ body{margin:0;background:var(--bg);color:var(--fg);
   font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;
   font-variant-numeric:tabular-nums}
 .wrap{max-width:960px;margin:0 auto;padding:36px 22px 72px}
-header{display:flex;align-items:center;gap:14px;margin-bottom:6px}
-header svg{flex:none}
+header{display:flex;align-items:center;gap:18px;margin-bottom:8px;
+  padding-bottom:18px;border-bottom:1px solid var(--line)}
+header svg.logo{flex:none;height:26px;width:auto}
+header h1{padding-left:18px;border-left:1px solid var(--line)}
 h1{font-size:21px;font-weight:650;letter-spacing:-.01em;margin:0}
 .brand{font-size:12px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
-.sub{color:var(--dim);font-size:13px;margin:0 0 26px 54px}
+.sub{color:var(--dim);font-size:13px;margin:0 0 26px}
 h2{font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
   color:var(--faint);margin:0 0 14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
@@ -183,7 +186,7 @@ svg.qr{background:#fff;border-radius:12px;padding:10px;max-width:250px;height:au
 """
 
 
-LOGO = """<svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+LOGO_FALLBACK = """<svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true">
   <rect width="40" height="40" rx="11" fill="url(#ffg)"/>
   <path d="M12 27V13h13v3.6h-9.1v2.9h8v3.5h-8V27H12z" fill="#fff"/>
   <path d="M24.5 27c2.9-1.1 4.6-3.4 5-6.9" stroke="#fff" stroke-width="2.1"
@@ -192,6 +195,17 @@ LOGO = """<svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidde
     <stop stop-color="#5b8dff"/><stop offset="1" stop-color="#41d19b"/>
   </linearGradient></defs>
 </svg>"""
+
+
+def logo_html():
+    """Фирменный знак из assets/logo.svg. Размер задаём классом: в файле он в
+    миллиметрах, и без этого шапка распухла бы на пол-экрана."""
+    try:
+        svg = open(os.path.join(REPO, "assets", "logo.svg")).read()
+    except OSError:
+        return LOGO_FALLBACK
+    svg = re.sub(r'\s(width|height)="[^"]*"', "", svg, count=2)
+    return svg.replace("<svg", '<svg class="logo"', 1)
 
 MODES = (("full", "умный (RU напрямую)"),
          ("strict", "всё через Латвию"),
@@ -279,7 +293,7 @@ def page(msg="", err=False, extra=""):
     return ("""<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FutureFlow — доступ к VPN</title><style>%s</style></head><body><div class="wrap">
-<header>%s<div><h1>Доступ к VPN</h1><div class="brand">FutureFlow</div></div></header>
+<header>%s<h1>Доступ к VPN</h1></header>
 <p class="sub">Панель открыта только через SSH-туннель — снаружи порт закрыт.</p>
 %s%s
 <div class="card"><h2>Сервер</h2><div class="grid">
@@ -299,7 +313,7 @@ def page(msg="", err=False, extra=""):
 <button class="primary">Добавить</button></form>
 <div class="hint">Латиница, цифры, дефис. Ключ персональный — отключается отдельно от остальных.</div>
 </div></div></body></html>"""
-            % (CSS, LOGO, msg_html, extra, sb_cls, html.escape(st["singbox"]),
+            % (CSS, logo_html(), msg_html, extra, sb_cls, html.escape(st["singbox"]),
                html.escape(st["ports"]), html.escape(st["ip"]), html.escape(st["decoy"]),
                domain_card(dom), body, config_links(dom.get("host", ""), st["ip"]), TOKEN))
 
