@@ -18,6 +18,9 @@ credentials.txt
 killswitch.enabled
 cache.db
 
+# Имя сервера (личный домен) — не публикуем в репозитории
+configs/server-host.txt
+
 # Прочее
 .DS_Store
 *.log

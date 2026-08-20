@@ -44,6 +44,14 @@ open(local,"w").write(t)
 print("[*] Конфиг пересобран. server="+vals["__SERVER_IP__"]+"  sni="+vals["__REALITY_SNI__"])
 PY
 
+# Конфиг только что пересобран из шаблона — доменные маршруты (если они были
+# настроены) нужно вернуть, иначе обновление молча откатывало бы переход на домен.
+if [[ -f "$DIR/configs/server-host.txt" ]]; then
+  HOST_SAVED="$(tr -d '[:space:]' < "$DIR/configs/server-host.txt")"
+  echo "[*] Возвращаю доменные маршруты: $HOST_SAVED"
+  FORCE=1 SKIP_DEPLOY=1 bash "$DIR/scripts/add-domain-routes.sh" "$HOST_SAVED"
+fi
+
 echo "[*] Проверяю конфиг (sing-box check)..."
 "$(command -v sing-box)" check -c "$LOCAL"
 echo "[*] Разворачиваю и перезагружаю демон..."
