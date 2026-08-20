@@ -26,6 +26,9 @@ UUID="${GUEST_UUID:-$(python3 -c "import json;print(json.load(open('$CFG'))['inb
 SID=$(python3 -c "import json;r=json.load(open('$CFG'))['inbounds'][0]['tls']['reality']['short_id'];print(r[0] if isinstance(r,list) else r)")
 FLOW=$(python3 -c "import json;print(json.load(open('$CFG'))['inbounds'][0]['users'][0].get('flow',''))")
 PBK=$(tr -d '[:space:]' < "$PBKF")
+# Имя сервера (если настроено) — тогда в конфиг попадут ещё и маршруты по домену,
+# и гость переживёт смену IP без перевыпуска профиля.
+SERVER_HOST="${SERVER_HOST:-$(tr -d '[:space:]' < /etc/sing-box/server-host.txt 2>/dev/null || true)}"
 
 # Конфиги содержат UUID/short_id (учётные данные клиента) и раздаются по ОТКРЫТОМУ
 # HTTP. Порт 8080 закрываем при выходе (Ctrl+C/ошибка) и чистим /tmp/ios, чтобы не
@@ -34,7 +37,7 @@ cleanup() { [[ "$SERVE" == 1 ]] && ufw delete allow "${PORT}/tcp" >/dev/null 2>&
 trap cleanup EXIT INT TERM
 
 mkdir -p "$OUT_DIR"
-OUT_DIR="$OUT_DIR" IP="$IP" UUID="$UUID" SID="$SID" FLOW="$FLOW" PBK="$PBK" TPL="$TPL" python3 <<'PY'
+OUT_DIR="$OUT_DIR" SERVER_HOST="$SERVER_HOST" IP="$IP" UUID="$UUID" SID="$SID" FLOW="$FLOW" PBK="$PBK" TPL="$TPL" python3 <<'PY'
 import json,os,copy
 # Домены-прикрытия для авто-failover (urltest). Сервер держит один на 443; клиент
 # держит все — работает тот, что совпал с серверным; если отвалится, urltest сам прыгнет.
@@ -59,6 +62,11 @@ for d in DECOYS:
     t="reality-"+d.split(".")[-2]; tags.append(t); vs.append(vless(t,d))
 for port,d in ALT:
     t=f"reality-alt{port}"; tags.append(t); vs.append(vless(t,d,port))
+HOST=os.environ.get("SERVER_HOST","").strip()
+if HOST:
+    for port,d in ((443,"www.apple.com"),(2053,"www.cloudflare.com")):
+        o=vless(f"reality-dns{port}",d,port); o["server"]=HOST
+        tags.append(o["tag"]); vs.append(o)
 src["outbounds"]=[
     {"type":"selector","tag":"proxy","outbounds":["auto"]+tags,"default":"auto"},
     {"type":"urltest","tag":"auto","outbounds":tags,"url":"https://www.gstatic.com/generate_204",
@@ -73,6 +81,13 @@ def base():
     d.pop("experimental",None)
     d["dns"]={"servers":[{"tag":"dns-remote","address":"https://1.1.1.1/dns-query","detour":"proxy"}],
               "strategy":"ipv4_only","final":"dns-remote"}
+    if HOST:
+        # Имя сервера резолвим МИМО туннеля, иначе кольцо: подключиться нельзя, пока
+        # имя не разрешено, а разрешить нечем. detour обязан вести на НЕПУСТОЙ
+        # outbound — пустой "direct" sing-box отвергает при старте.
+        d["outbounds"].append({"type":"direct","tag":"direct-dns","connect_timeout":"5s"})
+        d["dns"]["servers"].append({"tag":"dns-bootstrap","address":"https://1.1.1.1/dns-query","detour":"direct-dns"})
+        d["dns"]["rules"]=[{"domain":[HOST],"server":"dns-bootstrap"}]
     d.get("route",{}).pop("default_domain_resolver",None)
     return d
 def is_ru_direct(x):

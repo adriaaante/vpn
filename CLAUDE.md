@@ -239,6 +239,16 @@ uuid/short_id/ключи выводятся как `sha256:xxxxxxxx`, свой I
 Итог того дня: сервер жив, RU-ноды коннектятся, ломается на всех сетях ⇒
 остаётся рассинхрон параметров клиент↔сервер, а не блокировка.
 
+## iOS-конфиги отстают от sing-box 1.13 (мина замедленного действия)
+
+`make-ios-configs-server.sh` пишет DNS в СТАРОМ формате (`address: https://...`) и без
+`route.default_domain_resolver`. На телефоне работает (приложение старее), но CLI 1.13
+такие конфиги запускать отказывается: `legacy DNS servers is deprecated` и
+`missing route.default_domain_resolver` — оба FATAL, обходятся только переменными
+`ENABLE_DEPRECATED_LEGACY_DNS_SERVERS` / `ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER`.
+В 1.14 поддержку уберут совсем ⇒ при обновлении приложения генератор надо мигрировать
+на новый формат (как в `configs/singbox-client.template.json`, где он уже новый).
+
 ## Доступ для друзей: `scripts/vpn-users.sh` (на сервере)
 
 Источник правды — `/etc/sing-box/users.json`; скрипт пересобирает из него `users`
