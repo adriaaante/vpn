@@ -23,7 +23,20 @@ echo "[*] Адрес (откроется сам): $URL"
 
 # Токен передаём в окружение удалённой панели; репозиторий на сервере обновляем,
 # чтобы панель и vpn-users.sh были одной версии.
-ssh -t -L "$PORT:127.0.0.1:$PORT" "$SRV" \
-  "cd /root/vpn && git fetch -q origin && git checkout \$(git branch -r | grep -m1 '$BRANCH_GREP') -- scripts && PANEL_TOKEN='$TOKEN' PANEL_PORT='$PORT' python3 scripts/vpn-panel.py"
+REMOTE="cd /root/vpn && git fetch -q origin && git checkout \$(git branch -r | grep -m1 '$BRANCH_GREP') -- scripts && PANEL_TOKEN='$TOKEN' PANEL_PORT='$PORT' python3 scripts/vpn-panel.py"
+
+# Длинный SSH к зарубежному адресу иногда рвут на пути или он отваливается по
+# простою — тогда панель просто пропадала. Держим keepalive и переподключаемся,
+# пока не нажат Ctrl+C. Токен не меняется, поэтому вкладку перезагружать не надо.
+STOP=0
+trap 'STOP=1' INT
+while [[ $STOP -eq 0 ]]; do
+  ssh -t -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes \
+      -L "$PORT:127.0.0.1:$PORT" "$SRV" "$REMOTE"
+  rc=$?
+  [[ $STOP -eq 1 ]] && break
+  echo "[!] Соединение оборвалось (код $rc). Переподключаюсь через 3 с — Ctrl+C, чтобы выйти."
+  sleep 3
+done
 
 echo "[*] Панель закрыта, туннель снят."
