@@ -118,8 +118,12 @@ share() { # собрать и раздать конфиг конкретного
   echo " Конфиг для «$name». Раздаю по HTTP — пусть импортирует как"
   echo " Remote-профиль в sing-box (iOS/Android) или скачает файл."
   echo
+  # По имени, если оно настроено: ссылка тогда не привяжется к текущему адресу.
+  local linkhost
+  linkhost="$(tr -d '[:space:]' < /etc/sing-box/server-host.txt 2>/dev/null || true)"
+  [[ -n "$linkhost" ]] || linkhost="$(curl -fsSL --max-time 6 https://api.ipify.org 2>/dev/null)"
   echo "   умный (RU напрямую, зарубеж через VPN):"
-  echo "     http://$(curl -fsSL --max-time 6 https://api.ipify.org 2>/dev/null):8080/full.json"
+  echo "     http://$linkhost:8080/full.json"
   echo
   echo " Ctrl+C, как только импортирует: ссылка отдаёт его ключ без пароля."
   echo "============================================================"

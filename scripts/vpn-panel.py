@@ -179,7 +179,12 @@ def page(msg="", err=False, extra=""):
 
 def share_page(name):
     st = server_status()
-    url = f"http://{st['ip']}:8080/full.json"
+    # Если имя сервера настроено — ссылка по имени: она переживёт смену адреса.
+    try:
+        host = open("/etc/sing-box/server-host.txt").read().strip() or st["ip"]
+    except OSError:
+        host = st["ip"]
+    url = f"http://{host}:8080/full.json"
     svg = qr_svg(url)
     stop = f"""<form method="post" action="/act"><input type="hidden" name="t" value="{TOKEN}">
 <input type="hidden" name="op" value="share_stop"><button class="danger">Остановить раздачу</button></form>"""

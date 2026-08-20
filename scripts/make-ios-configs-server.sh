@@ -130,9 +130,12 @@ echo "============================================================"
 echo " На АЙФОНЕ (по СОТОВОЙ связи!) sing-box VT -> New Profile ->"
 echo " Type: REMOTE, добавь 3 профиля:"
 echo
-echo "   умный (RU напрямую):  http://$IP:$PORT/full.json"
-echo "   Латвия все:           http://$IP:$PORT/strict.json"
-echo "   только сервисы:       http://$IP:$PORT/selective.json"
+# Ссылку показываем по имени, если оно настроено: тогда и канал доставки переживёт
+# смену адреса, а не только сами маршруты внутри конфига.
+LINKHOST="${SERVER_HOST:-$IP}"
+echo "   умный (RU напрямую):  http://$LINKHOST:$PORT/full.json"
+echo "   Латвия все:           http://$LINKHOST:$PORT/strict.json"
+echo "   только сервисы:       http://$LINKHOST:$PORT/selective.json"
 echo "============================================================"
 echo " Раздаю. НЕ закрывай, пока не импортируешь все 3. Потом Ctrl+C."
 echo
