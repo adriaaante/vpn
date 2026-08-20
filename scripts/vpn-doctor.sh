@@ -28,6 +28,14 @@ case "${1:-}" in
 esac
 
 have() { command -v "$1" >/dev/null 2>&1; }
+
+# GNU timeout есть на Linux, но НЕ на macOS. Без обёртки openssl/curl либо висят,
+# либо (как было) команда не находится и проверка молча превращается в ложный FAIL.
+if have timeout;      then TO() { timeout "$@"; };  TO_KIND=timeout
+elif have gtimeout;   then TO() { gtimeout "$@"; }; TO_KIND=gtimeout
+elif have perl;       then TO() { local s="$1"; shift; perl -e 'alarm shift; exec @ARGV' "$s" "$@"; }; TO_KIND=perl
+else                       TO() { shift; "$@"; };   TO_KIND="НЕТ (проверки без таймаута)"
+fi
 hr() { printf '%s\n' "----------------------------------------------------------"; }
 
 [[ -f "$CFG" ]] || { echo "Нет $CFG — sing-box здесь не настроен."; exit 1; }
@@ -119,7 +127,7 @@ if [[ "$MODE" == "client" ]]; then
   echo "=== СЕТЬ ДО СЕРВЕРА (запускать с ВЫКЛЮЧЕННЫМ туннелем) ==="
   tcp_ok() {
     nc -z -G 5 "$SRV_IP" "$1" >/dev/null 2>&1 \
-      || timeout 6 bash -c "exec 3<>/dev/tcp/$SRV_IP/$1" >/dev/null 2>&1
+      || TO 6 bash -c "exec 3<>/dev/tcp/$SRV_IP/$1" >/dev/null 2>&1
   }
   P443=НЕТ; tcp_ok 443 && P443=да
   P22=НЕТ;  tcp_ok 22  && P22=да
@@ -130,10 +138,22 @@ if [[ "$MODE" == "client" ]]; then
   echo
   echo "=== TLS-ХЕНДШЕЙК ==="
   echo "  openssl: $(openssl version 2>/dev/null || echo 'НЕТ')"
-  cn_of()  { echo | timeout 12 openssl s_client -connect "$1:443" -servername "$2" 2>/dev/null \
-             | sed -n 's/^subject=.*CN *= *//p' | head -1; }
-  err_of() { echo | timeout 12 openssl s_client -connect "$1:443" -servername "$2" 2>&1 >/dev/null \
-             | grep -iE 'error|alert|unknown|refus|timed|connect:' | head -1 | cut -c1-64; }
+  echo "  таймаут-обёртка: $TO_KIND"
+  # CN прикрытия через openssl; если openssl молчит (LibreSSL на macOS капризен) —
+  # запасная проба через curl: она тоже делает НАСТОЯЩИЙ TLS-хендшейк с нужным SNI.
+  cn_of() {
+    local cn
+    cn=$(echo | TO 12 openssl s_client -connect "$1:443" -servername "$2" 2>/dev/null \
+         | sed -n 's/^subject=.*CN *= *//p' | head -1)
+    if [[ -n "$cn" ]]; then echo "$cn"; return 0; fi
+    if TO 15 curl -s -o /dev/null --noproxy '*' --max-time 12 \
+         --connect-to "$2:443:$1:443" "https://$2/" 2>/dev/null; then
+      echo "хендшейк прошёл (curl)"; return 0
+    fi
+    return 1
+  }
+  err_of() { echo | TO 12 openssl s_client -connect "$1:443" -servername "$2" 2>&1 >/dev/null \
+             | grep -iE 'error|alert|unknown|refus|timed|connect:|not found' | head -1 | cut -c1-64; }
 
   # КОНТРОЛЬ: чужой заведомо живой сайт. Провалился он — виноват инструмент или
   # блокируется весь TLS, и проверки по decoy ниже недостоверны (грабля №5).
