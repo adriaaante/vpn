@@ -14,7 +14,10 @@ LOCAL="$DIR/configs/singbox-client.local.json"
 NEW="${1:-}"
 
 [[ -n "$NEW" ]] || { echo "Использование: bash scripts/set-server-ip.sh <новый-IP>"; exit 2; }
-[[ "$NEW" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || { echo "Это не похоже на IPv4: $NEW"; exit 2; }
+# Принимаем и IPv4, и IPv6 (переезд на v6 — способ обойти блокировку v4-адреса).
+if [[ "$NEW" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then :
+elif [[ "$NEW" == *:* ]]; then :
+else echo "Это не похоже на IP-адрес: $NEW"; exit 2; fi
 [[ -f "$LOCAL" ]] || { echo "Нет $LOCAL — сначала настрой клиента."; exit 1; }
 
 BAK="$LOCAL.bak.$(date +%s)"
