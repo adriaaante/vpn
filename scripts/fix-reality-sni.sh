@@ -92,7 +92,7 @@ PCC=$(curl -s --max-time 6 --socks5-hostname 127.0.0.1:10999 https://ipinfo.io/c
 kill "$PP" 2>/dev/null
 echo "[*] Боевой Reality по петле: ${PCC:-FAIL}"
 
-IP=$(curl -fsSL --max-time 6 https://api.ipify.org 2>/dev/null || echo "192.36.41.201")
+IP=$(curl -fsSL --max-time 6 https://api.ipify.org 2>/dev/null || echo "89.46.238.74")
 echo
 echo "============================================================"
 echo " ЗНАЧЕНИЯ ДЛЯ КЛИЕНТА (айфон/мак):"

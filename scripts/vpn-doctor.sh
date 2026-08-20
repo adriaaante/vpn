@@ -18,7 +18,7 @@ set -uo pipefail
 
 CFG="${CFG:-/etc/sing-box/config.json}"
 PBKF="${PBKF:-/etc/sing-box/reality_public_key.txt}"
-SRV_IP="${SRV_IP:-192.36.41.201}"
+SRV_IP="${SRV_IP:-89.46.238.74}"
 # Версия отчёта: поднимать при КАЖДОЙ правке проверок — иначе не отличить,
 # свежий скрипт отработал или закешированный старый (ловили 2026-08-20).
 DOCTOR_VER="2026-08-20.3"

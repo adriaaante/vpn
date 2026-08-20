@@ -14,7 +14,7 @@
 
 set -uo pipefail
 
-SRV_IP="${SRV_IP:-192.36.41.201}"
+SRV_IP="${SRV_IP:-89.46.238.74}"
 SRV_V6_NET="${SRV_V6_NET:-2a03:f80:371:9ef5}"   # блок из панели EDIS
 SNI="${SNI:-www.apple.com}"
 ALT_PORTS="${ALT_PORTS:-2053 8443 993 2083 8880}"
