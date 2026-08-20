@@ -19,6 +19,9 @@ set -uo pipefail
 CFG="${CFG:-/etc/sing-box/config.json}"
 PBKF="${PBKF:-/etc/sing-box/reality_public_key.txt}"
 SRV_IP="${SRV_IP:-192.36.41.201}"
+# Версия отчёта: поднимать при КАЖДОЙ правке проверок — иначе не отличить,
+# свежий скрипт отработал или закешированный старый (ловили 2026-08-20).
+DOCTOR_VER="2026-08-20.3"
 MODE=""
 case "${1:-}" in
   --client) MODE=client ;;
@@ -52,7 +55,7 @@ PY
 fi
 
 echo "=========================================================="
-echo " vpn-doctor — режим: $MODE   ($(date -u '+%Y-%m-%d %H:%M UTC'))"
+echo " vpn-doctor v$DOCTOR_VER — режим: $MODE   ($(date -u '+%Y-%m-%d %H:%M UTC'))"
 echo "=========================================================="
 
 # ---------- общая часть: параметры Reality в виде отпечатков ----------
