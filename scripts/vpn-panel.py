@@ -75,6 +75,33 @@ def server_status():
     }
 
 
+DOMAIN_INFO = os.environ.get("DOMAIN_INFO", "/etc/sing-box/domain-info.json")
+
+
+def domain_info():
+    """Имя сервера + факты о домене: где куплен, до какого числа оплачен."""
+    host = ""
+    try:
+        host = open(os.environ.get("HOSTFILE", "/etc/sing-box/server-host.txt")).read().strip()
+    except OSError:
+        pass
+    info = {}
+    try:
+        info = json.load(open(DOMAIN_INFO))
+    except (OSError, json.JSONDecodeError):
+        pass
+    info["host"] = host
+    exp = info.get("expires", "")
+    if exp:
+        try:
+            y, m, dd = (int(x) for x in exp.split("-"))
+            import datetime
+            info["days_left"] = (datetime.date(y, m, dd) - datetime.date.today()).days
+        except ValueError:
+            pass
+    return info
+
+
 def qr_svg(text):
     """QR как SVG — если в системе есть qrencode. Без него просто не показываем."""
     if not shutil.which("qrencode"):
@@ -88,122 +115,218 @@ def qr_svg(text):
 
 
 CSS = """
-:root{--bg:#0f1115;--card:#181b22;--line:#262b36;--fg:#e8eaf0;--dim:#98a0b3;
---ok:#3ecf8e;--off:#f0883e;--bad:#ff6b6b;--accent:#5b8dff}
+/* Системный шрифт намеренно: панель открывается через SSH-туннель и не должна
+   ходить в интернет за шрифтами — ни лишних запросов, ни задержек. */
+:root{
+  --bg:#0d0f13; --card:#161920; --card2:#1b1f28; --line:#252a35;
+  --fg:#e9ecf3; --dim:#96a0b5; --faint:#6a7385;
+  --ok:#41d19b; --warn:#f0a441; --bad:#ff6b6b; --accent:#5b8dff;
+  --radius:14px;
+}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);
-font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
-.wrap{max-width:900px;margin:0 auto;padding:32px 20px 60px}
-h1{font-size:22px;margin:0 0 4px}
-.sub{color:var(--dim);font-size:13px;margin-bottom:24px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
-padding:18px 20px;margin-bottom:18px}
-.status{display:flex;flex-wrap:wrap;gap:22px;font-size:13px}
-.status b{display:block;color:var(--dim);font-weight:500;margin-bottom:2px}
+  font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,sans-serif;
+  font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;
+  font-variant-numeric:tabular-nums}
+.wrap{max-width:960px;margin:0 auto;padding:36px 22px 72px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+header svg{flex:none}
+h1{font-size:21px;font-weight:650;letter-spacing:-.01em;margin:0}
+.brand{font-size:12px;color:var(--faint);letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+.sub{color:var(--dim);font-size:13px;margin:0 0 26px 54px}
+h2{font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--faint);margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:20px 22px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:18px}
+.kv b{display:block;color:var(--faint);font-weight:500;font-size:11px;
+  letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
+.kv span{font-size:14px}
 table{width:100%;border-collapse:collapse}
-th{text-align:left;font-size:12px;color:var(--dim);font-weight:500;
-padding:0 8px 10px;border-bottom:1px solid var(--line)}
-td{padding:12px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{text-align:left;font-size:11px;color:var(--faint);font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;padding:0 8px 12px;border-bottom:1px solid var(--line)}
+td{padding:14px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
 tr:last-child td{border-bottom:0}
-.name{font-weight:600}
+.name{font-weight:600;letter-spacing:-.005em}
 .note{color:var(--dim);font-size:12px}
-.pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px}
-.on{background:rgba(62,207,142,.14);color:var(--ok)}
-.off{background:rgba(240,136,62,.14);color:var(--off)}
-button{font:inherit;border:1px solid var(--line);background:#20242e;color:var(--fg);
-padding:7px 13px;border-radius:8px;cursor:pointer}
+.pill{display:inline-block;padding:3px 11px;border-radius:99px;font-size:12px;font-weight:500}
+.on{background:rgba(65,209,155,.13);color:var(--ok)}
+.off{background:rgba(240,164,65,.13);color:var(--warn)}
+.err{background:rgba(255,107,107,.13);color:var(--bad)}
+button{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--card2);
+  color:var(--fg);padding:8px 14px;border-radius:9px;cursor:pointer;
+  transition:border-color .15s,color .15s}
 button:hover{border-color:var(--accent)}
 button.danger:hover{border-color:var(--bad);color:var(--bad)}
-button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.row{display:flex;gap:8px;flex-wrap:wrap}
-input[type=text]{font:inherit;background:#20242e;border:1px solid var(--line);
-color:var(--fg);padding:8px 12px;border-radius:8px;min-width:220px}
-.msg{background:#12241c;border:1px solid #235c40;padding:12px 14px;border-radius:10px;
-white-space:pre-wrap;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;margin-bottom:18px}
-.msg.err{background:#2a1618;border-color:#6d2b30}
-.link{word-break:break-all;font:13px ui-monospace,SFMono-Regular,Menlo,monospace;
-background:#20242e;padding:10px 12px;border-radius:8px;display:block;margin:10px 0}
-svg{background:#fff;border-radius:10px;padding:8px;max-width:260px;height:auto}
-.hint{color:var(--dim);font-size:12px;margin-top:8px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:550}
+button.primary:hover{filter:brightness(1.08)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input[type=text]{font:inherit;background:var(--card2);border:1px solid var(--line);
+  color:var(--fg);padding:9px 13px;border-radius:9px;min-width:240px}
+input[type=text]:focus{outline:none;border-color:var(--accent)}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.msg{background:rgba(65,209,155,.08);border:1px solid rgba(65,209,155,.3);
+  padding:13px 15px;border-radius:11px;white-space:pre-wrap;
+  font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;margin-bottom:16px}
+.msg.bad{background:rgba(255,107,107,.08);border-color:rgba(255,107,107,.35)}
+.links{display:grid;grid-template-columns:1fr;gap:10px}
+.linkrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;padding:10px 12px;
+  background:var(--card2);border-radius:10px}
+.linkrow .mode{min-width:150px;font-size:13px;color:var(--dim)}
+.linkrow code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:var(--fg);word-break:break-all}
+.tag{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);
+  border:1px solid var(--line);padding:1px 6px;border-radius:5px}
+svg.qr{background:#fff;border-radius:12px;padding:10px;max-width:250px;height:auto}
+.hint{color:var(--faint);font-size:12px;margin-top:10px}
 """
+
+
+LOGO = """<svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+  <rect width="40" height="40" rx="11" fill="url(#ffg)"/>
+  <path d="M12 27V13h13v3.6h-9.1v2.9h8v3.5h-8V27H12z" fill="#fff"/>
+  <path d="M24.5 27c2.9-1.1 4.6-3.4 5-6.9" stroke="#fff" stroke-width="2.1"
+        stroke-linecap="round" opacity=".65"/>
+  <defs><linearGradient id="ffg" x1="0" y1="0" x2="40" y2="40">
+    <stop stop-color="#5b8dff"/><stop offset="1" stop-color="#41d19b"/>
+  </linearGradient></defs>
+</svg>"""
+
+MODES = (("full", "умный (RU напрямую)"),
+         ("strict", "всё через Латвию"),
+         ("selective", "только сервисы"))
+
+
+def config_links(dom, ip):
+    """Все ссылки на конфиги — и по имени, и по адресу, чтобы видеть картину целиком."""
+    rows = []
+    for fname, label in MODES:
+        cells = []
+        if dom:
+            cells.append('<code>http://%s:8080/%s.json</code><span class="tag">домен</span>'
+                         % (html.escape(dom), fname))
+        cells.append('<code>http://%s:8080/%s.json</code><span class="tag">ip</span>'
+                     % (html.escape(ip), fname))
+        rows.append('<div class="linkrow"><span class="mode">%s</span>%s</div>'
+                    % (label, "".join(cells)))
+    return ('<div class="card"><h2>Ссылки на конфиги</h2><div class="links">%s</div>'
+            '<div class="hint">Живут, только пока идёт раздача (кнопка «Выдать конфиг»). '
+            'Ссылка по домену переживает смену адреса сервера — предпочитай её. '
+            'Гостям отдаём только «умный».</div></div>' % "".join(rows))
+
+
+def domain_card(info):
+    if not info.get("host"):
+        return ('<div class="card"><h2>Домен</h2><div class="note">Имя сервера не настроено. '
+                'Задать: <code>echo имя &gt; /etc/sing-box/server-host.txt</code></div></div>')
+    left = info.get("days_left")
+    if left is None:
+        state = '<span class="pill off">срок не указан</span>'
+    elif left < 30:
+        state = '<span class="pill err">пора продлевать: %d дн.</span>' % left
+    elif left < 90:
+        state = '<span class="pill off">осталось %d дн.</span>' % left
+    else:
+        state = '<span class="pill on">оплачен ещё %d дн.</span>' % left
+    links = []
+    if info.get("panel_url"):
+        links.append('<a href="%s" target="_blank">домен в панели регистратора</a>'
+                     % html.escape(info["panel_url"]))
+    if info.get("dns_url"):
+        links.append('<a href="%s" target="_blank">DNS-записи</a>' % html.escape(info["dns_url"]))
+    tail = '<div class="hint">%s</div>' % " · ".join(links) if links else ""
+    return ('<div class="card"><h2>Домен</h2><div class="grid">'
+            '<div class="kv"><b>имя</b><span>%s</span></div>'
+            '<div class="kv"><b>регистратор</b><span>%s</span></div>'
+            '<div class="kv"><b>оплачен до</b><span>%s</span></div>'
+            '<div class="kv"><b>состояние</b><span>%s</span></div>'
+            '</div>%s</div>'
+            % (html.escape(info["host"]), html.escape(info.get("registrar", "—")),
+               html.escape(info.get("expires", "—")), state, tail))
 
 
 def page(msg="", err=False, extra=""):
     st = server_status()
-    sb_cls = "on" if st["singbox"] == "active" else "off"
+    dom = domain_info()
+    sb_cls = "on" if st["singbox"] == "active" else "err"
     rows = []
     for u in users():
         on = bool(u.get("enabled"))
         nm = html.escape(u["name"])
         note = html.escape(u.get("note", ""))
         toggle = "disable" if on else "enable"
-        toggle_label = "Отключить" if on else "Включить"
-        rows.append(f"""<tr>
-<td><div class="name">{nm}</div>{f'<div class="note">{note}</div>' if note else ''}</td>
-<td><span class="pill {'on' if on else 'off'}">{'включён' if on else 'отключён'}</span></td>
-<td><div class="row">
-<form method="post" action="/act"><input type="hidden" name="t" value="{TOKEN}">
-<input type="hidden" name="op" value="{toggle}"><input type="hidden" name="name" value="{nm}">
-<button>{toggle_label}</button></form>
-<form method="get" action="/share"><input type="hidden" name="t" value="{TOKEN}">
-<input type="hidden" name="name" value="{nm}"><button>Выдать конфиг</button></form>
-<form method="post" action="/act" onsubmit="return confirm('Удалить {nm} насовсем?')">
-<input type="hidden" name="t" value="{TOKEN}"><input type="hidden" name="op" value="remove">
-<input type="hidden" name="name" value="{nm}"><button class="danger">Удалить</button></form>
-</div></td></tr>""")
+        note_html = '<div class="note">%s</div>' % note if note else ""
+        rows.append(
+            '<tr><td><div class="name">%s</div>%s</td>'
+            '<td><span class="pill %s">%s</span></td>'
+            '<td><div class="row">'
+            '<form method="post" action="/act"><input type="hidden" name="t" value="%s">'
+            '<input type="hidden" name="op" value="%s"><input type="hidden" name="name" value="%s">'
+            '<button>%s</button></form>'
+            '<form method="get" action="/share"><input type="hidden" name="t" value="%s">'
+            '<input type="hidden" name="name" value="%s"><button>Выдать конфиг</button></form>'
+            '<form method="post" action="/act" onsubmit="return confirm(\'Удалить %s?\')">'
+            '<input type="hidden" name="t" value="%s"><input type="hidden" name="op" value="remove">'
+            '<input type="hidden" name="name" value="%s"><button class="danger">Удалить</button></form>'
+            '</div></td></tr>'
+            % (nm, note_html, "on" if on else "off", "включён" if on else "отключён",
+               TOKEN, toggle, nm, "Отключить" if on else "Включить",
+               TOKEN, nm, nm, TOKEN, nm))
 
-    msg_html = f'<div class="msg{" err" if err else ""}">{html.escape(msg)}</div>' if msg else ""
-    return f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
+    msg_html = ('<div class="msg%s">%s</div>' % (" bad" if err else "", html.escape(msg))) if msg else ""
+    body = "".join(rows) or '<tr><td colspan="3" class="note">Пока никого нет</td></tr>'
+    return ("""<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VPN — доступ</title><style>{CSS}</style></head><body><div class="wrap">
-<h1>Доступ к VPN</h1>
-<div class="sub">Панель видна только через SSH-туннель. Снаружи порт закрыт.</div>
-{msg_html}{extra}
-<div class="card"><div class="status">
-<div><b>sing-box</b><span class="pill {sb_cls}">{html.escape(st['singbox'])}</span></div>
-<div><b>порты</b>{html.escape(st['ports'])}</div>
-<div><b>адрес</b>{html.escape(st['ip'])}</div>
-<div><b>текущий decoy</b>{html.escape(st['decoy'])}</div>
+<title>FutureFlow — доступ к VPN</title><style>%s</style></head><body><div class="wrap">
+<header>%s<div><h1>Доступ к VPN</h1><div class="brand">FutureFlow</div></div></header>
+<p class="sub">Панель открыта только через SSH-туннель — снаружи порт закрыт.</p>
+%s%s
+<div class="card"><h2>Сервер</h2><div class="grid">
+<div class="kv"><b>sing-box</b><span class="pill %s">%s</span></div>
+<div class="kv"><b>порты</b><span>%s</span></div>
+<div class="kv"><b>адрес</b><span>%s</span></div>
+<div class="kv"><b>текущий decoy</b><span>%s</span></div>
 </div></div>
-<div class="card"><table>
-<tr><th>Пользователь</th><th>Статус</th><th>Действия</th></tr>
-{''.join(rows) or '<tr><td colspan="3" class="note">Пока никого нет</td></tr>'}
-</table></div>
-<div class="card"><form method="post" action="/act" class="row">
-<input type="hidden" name="t" value="{TOKEN}"><input type="hidden" name="op" value="add">
+%s
+<div class="card"><h2>Люди</h2><table>
+<tr><th>Пользователь</th><th>Статус</th><th>Действия</th></tr>%s</table></div>
+%s
+<div class="card"><h2>Добавить человека</h2>
+<form method="post" action="/act" class="row">
+<input type="hidden" name="t" value="%s"><input type="hidden" name="op" value="add">
 <input type="text" name="name" placeholder="имя латиницей, напр. sasha-tpk" required>
-<button class="primary">Добавить человека</button></form>
-<div class="hint">Латиница, цифры, дефис. У каждого свой ключ — отключается отдельно.</div>
+<button class="primary">Добавить</button></form>
+<div class="hint">Латиница, цифры, дефис. Ключ персональный — отключается отдельно от остальных.</div>
 </div></div></body></html>"""
+            % (CSS, LOGO, msg_html, extra, sb_cls, html.escape(st["singbox"]),
+               html.escape(st["ports"]), html.escape(st["ip"]), html.escape(st["decoy"]),
+               domain_card(dom), body, config_links(dom.get("host", ""), st["ip"]), TOKEN))
 
 
 def share_page(name):
     st = server_status()
-    # Если имя сервера настроено — ссылка по имени: она переживёт смену адреса.
-    try:
-        host = open("/etc/sing-box/server-host.txt").read().strip() or st["ip"]
-    except OSError:
-        host = st["ip"]
-    url = f"http://{host}:8080/full.json"
+    dom = domain_info()
+    host = dom.get("host") or st["ip"]
+    url = "http://%s:8080/full.json" % host
     svg = qr_svg(url)
-    stop = f"""<form method="post" action="/act"><input type="hidden" name="t" value="{TOKEN}">
-<input type="hidden" name="op" value="share_stop"><button class="danger">Остановить раздачу</button></form>"""
-    qr = svg if svg else '<div class="hint">QR не показан: на сервере нет qrencode (apt install qrencode).</div>'
-    return f"""<div class="card"><h1 style="font-size:17px">Конфиг для «{html.escape(name)}»</h1>
-<div class="sub">Пусть добавит это как <b>Remote</b>-профиль в sing-box: New Profile → Type: Remote → URL.</div>
-<span class="link">{html.escape(url)}</span>{qr}
-<div class="hint">Ссылка отдаёт его личный ключ без пароля — останови раздачу сразу после импорта.</div>
-<div style="margin-top:12px">{stop}</div></div>"""
-
-
-def start_share(name):
-    """Раздача конфига — отдельным процессом: она держит http-сервер, пока не снимут."""
-    stop_share()
-    env = dict(os.environ, STORE=STORE, CFG=CFG)
-    share_proc["proc"] = subprocess.Popen(
-        ["bash", USERS_SH, "share", name], env=env,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    share_proc["name"] = name
+    qr = svg.replace("<svg", '<svg class="qr"', 1) if svg else (
+        '<div class="hint">QR нет: на сервере не установлен qrencode (apt install qrencode).</div>')
+    alt = "" if host == st["ip"] else (
+        '<div class="hint">Запасная ссылка по адресу: <code>http://%s:8080/full.json</code></div>'
+        % html.escape(st["ip"]))
+    return ('<div class="card"><h2>Конфиг для «%s»</h2>'
+            '<p class="note">Пусть добавит как <b>Remote</b>-профиль: '
+            'sing-box → New Profile → Type: Remote → URL.</p>'
+            '<div class="linkrow"><code>%s</code><span class="tag">домен</span></div>%s'
+            '<div style="margin:14px 0">%s</div>'
+            '<div class="hint">Ссылка отдаёт его личный ключ без пароля — '
+            'останови раздачу сразу после импорта.</div>'
+            '<form method="post" action="/act" style="margin-top:12px">'
+            '<input type="hidden" name="t" value="%s">'
+            '<input type="hidden" name="op" value="share_stop">'
+            '<button class="danger">Остановить раздачу</button></form></div>'
+            % (html.escape(name), html.escape(url), alt, qr, TOKEN))
 
 
 def stop_share():
