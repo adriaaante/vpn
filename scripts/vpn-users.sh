@@ -103,9 +103,7 @@ share() { # собрать и раздать конфиг конкретного
   uuid="$(get_field "$name" uuid)"
   [[ -n "$uuid" ]] || { echo "Нет такого пользователя: $name"; exit 1; }
   [[ "$(get_field "$name" enabled)" == "True" ]] || echo "[!] $name сейчас ОТКЛЮЧЁН — конфиг соберётся, но работать не будет."
-  # Имя может быть с пробелами и кириллицей ("Саша ТПК Сферикс") — в реестре и
-  # конфиге это нормально, но для пути раздачи берём безопасный слаг.
-  out="/tmp/guest-$(printf '%s' "$name" | tr -c '[:alnum:]' '_' | cut -c1-32)"
+  out="/tmp/guest-$name"
   rm -rf "$out"
   GUEST_UUID="$uuid" OUT_DIR="$out" SERVE=0 bash "$REPO/scripts/make-ios-configs-server.sh" >/dev/null || {
     echo "[!] Не удалось собрать конфиг"; exit 1; }
@@ -129,14 +127,19 @@ case "$CMD" in
     STORE="$STORE" python3 <<'PY'
 import json,os,hashlib
 d=json.load(open(os.environ["STORE"]))
-print(f"{'ПОЛЬЗОВАТЕЛЬ':<16}{'СТАТУС':<12}{'КЛЮЧ (отпечаток)':<20}ЗАМЕТКА")
+print(f"{'ПОЛЬЗОВАТЕЛЬ':<22}{'СТАТУС':<12}{'КЛЮЧ (отпечаток)':<20}ЗАМЕТКА")
 for u in d["users"]:
     fp="sha256:"+hashlib.sha256(u["uuid"].encode()).hexdigest()[:8]
-    print(f"{u['name']:<16}{('включён' if u.get('enabled') else 'ОТКЛЮЧЁН'):<12}{fp:<20}{u.get('note','')}")
+    print(f"{u['name']:<22}{('включён' if u.get('enabled') else 'ОТКЛЮЧЁН'):<12}{fp:<20}{u.get('note','')}")
 PY
     ;;
   add)
     [[ -n "$NAME" ]] || { echo "Использование: vpn-users.sh add <имя>"; exit 2; }
+    # Только латиница/цифры/._- : имя уходит в путь раздачи и в колонки вывода,
+    # кириллица и пробелы ломают и то, и другое (проверено на "Саша ТПК Сферикс").
+    [[ "$NAME" =~ ^[A-Za-z0-9._-]+$ ]] || {
+      echo "Имя только латиницей, без пробелов: буквы, цифры, точка, дефис, подчёркивание."
+      echo "Например:  sasha-tpk-sferiks"; exit 2; }
     [[ -n "$(get_field "$NAME" uuid)" ]] && { echo "Пользователь $NAME уже есть."; exit 1; }
     NEW_UUID="$(sing-box generate uuid 2>/dev/null || python3 -c 'import uuid;print(uuid.uuid4())')"
     NAME="$NAME" NEW_UUID="$NEW_UUID" STORE="$STORE" python3 <<'PY'
