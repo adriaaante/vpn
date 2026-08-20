@@ -103,7 +103,9 @@ share() { # собрать и раздать конфиг конкретного
   uuid="$(get_field "$name" uuid)"
   [[ -n "$uuid" ]] || { echo "Нет такого пользователя: $name"; exit 1; }
   [[ "$(get_field "$name" enabled)" == "True" ]] || echo "[!] $name сейчас ОТКЛЮЧЁН — конфиг соберётся, но работать не будет."
-  out="/tmp/guest-$name"
+  # Имя может быть с пробелами и кириллицей ("Саша ТПК Сферикс") — в реестре и
+  # конфиге это нормально, но для пути раздачи берём безопасный слаг.
+  out="/tmp/guest-$(printf '%s' "$name" | tr -c '[:alnum:]' '_' | cut -c1-32)"
   rm -rf "$out"
   GUEST_UUID="$uuid" OUT_DIR="$out" SERVE=0 bash "$REPO/scripts/make-ios-configs-server.sh" >/dev/null || {
     echo "[!] Не удалось собрать конфиг"; exit 1; }
