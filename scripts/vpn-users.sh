@@ -150,7 +150,9 @@ json.dump(d,open(os.environ["STORE"],"w"),indent=2,ensure_ascii=False)
 print(f"[*] Добавлен {os.environ['NAME']}")
 PY
     apply || exit 1
-    share "$NAME"
+    # NO_SHARE=1 — вызов из панели: она поднимет раздачу сама, отдельным процессом,
+    # иначе add блокировался бы на http-сервере и панель ждала бы его вечно.
+    [[ "${NO_SHARE:-0}" == 1 ]] || share "$NAME"
     ;;
   enable|disable)
     [[ -n "$NAME" ]] || { echo "Использование: vpn-users.sh $CMD <имя>"; exit 2; }
