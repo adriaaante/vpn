@@ -31,7 +31,9 @@ if ! python3 -c "import socket,sys; socket.getaddrinfo('$HOST',443)" 2>/dev/null
   [[ "${FORCE:-0}" == 1 ]] || { echo "    Подожди распространения DNS или запусти с FORCE=1."; exit 1; }
   echo "    FORCE=1 — добавляю всё равно."
 else
-  echo "[*] $HOST -> $(python3 -c "import socket;print(', '.join(sorted({a[4][0] for a in socket.getaddrinfo('$HOST',443)})))")"
+  # Без фигурных скобок: zsh разворачивает {...} как brace expansion и рвёт
+  # однострочник на два куска (ловили SyntaxError в выводе).
+  echo "[*] $HOST -> $(python3 -c "import socket;print(', '.join(sorted(set(a[4][0] for a in socket.getaddrinfo('$HOST',443)))))")"
 fi
 
 BAK="$LOCAL.bak.$(date +%s)"
