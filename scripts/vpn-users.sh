@@ -120,6 +120,8 @@ share() { # собрать и раздать конфиг конкретного
   echo
   echo " Ctrl+C, как только импортирует: ссылка отдаёт его ключ без пароля."
   echo "============================================================"
+  # см. комментарий в make-ios-configs-server.sh: снимаем зависшую прошлую раздачу
+  if ss -tln 2>/dev/null | grep -q ":8080 "; then pkill -f "http.server 8080" 2>/dev/null && sleep 1; fi
   ufw allow 8080/tcp >/dev/null 2>&1 || true
   trap 'ufw delete allow 8080/tcp >/dev/null 2>&1; rm -rf "$out"' EXIT INT TERM
   cd "$out" && python3 -m http.server 8080
