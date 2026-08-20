@@ -18,7 +18,7 @@ SRV_IP="${SRV_IP:-192.36.41.201}"
 SRV_V6_NET="${SRV_V6_NET:-2a03:f80:371:9ef5}"   # блок из панели EDIS
 SNI="${SNI:-www.apple.com}"
 ALT_PORTS="${ALT_PORTS:-2053 8443 993 2083 8880}"
-PROBE_VER="2026-08-20.1"
+PROBE_VER="2026-08-20.2"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 # GNU timeout есть на Linux, но не на macOS (грабля №5b).
@@ -80,7 +80,13 @@ echo "   и перенос порта поможет; 'timeout' = режут и 
 port_state() {
   local err rc
   err=$(TO 8 bash -c "exec 3<>/dev/tcp/$SRV_IP/$1" 2>&1); rc=$?
-  if (( rc == 0 )); then echo "открыт (кто-то слушает)"; return; fi
+  # Порт с живым Reality: одного TCP мало — DPI режет уже рукопожатие, поэтому
+  # сразу пробуем TLS. Это и есть ответ «поедет ли туннель по этому порту».
+  if (( rc == 0 )); then
+    if tls_try "$SRV_IP" "$1"; then echo "слушает, TLS ПРОХОДИТ ✅ — годится для туннеля"
+    else echo "слушает, но TLS режут ❌"; fi
+    return
+  fi
   case "$err" in
     *efused*) echo "refused  — путь чист ✅" ;;
     *)        echo "timeout/фильтр ❌" ;;
