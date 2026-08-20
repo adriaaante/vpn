@@ -43,8 +43,15 @@ p=sys.argv[1]; host=os.environ["HOST"]; d=json.load(open(p))
 
 dns=d.setdefault("dns",{})
 srv=dns.setdefault("servers",[])
-if not any(s.get("tag")=="dns-bootstrap" for s in srv):
-    srv.append({"type":"https","tag":"dns-bootstrap","server":"1.1.1.1","detour":"direct"})
+# detour обязателен, иначе запрос за именем сервера может уйти в туннель, которого
+# ещё нет. Но detour на ПУСТОЙ "direct" sing-box 1.13 отвергает при старте
+# ("detour to an empty direct outbound makes no sense") — проверено, ронял демон.
+# Поэтому заводим отдельный direct с заданным connect_timeout: он непустой.
+outs_pre=d.setdefault("outbounds",[])
+if not any(o.get("tag")=="direct-dns" for o in outs_pre):
+    outs_pre.append({"type":"direct","tag":"direct-dns","connect_timeout":"5s"})
+srv[:] = [x for x in srv if x.get("tag")!="dns-bootstrap"]
+srv.append({"type":"https","tag":"dns-bootstrap","server":"1.1.1.1","detour":"direct-dns"})
 rules=dns.setdefault("rules",[])
 rules=[r for r in rules if r.get("server")!="dns-bootstrap"]
 rules.insert(0,{"domain":[host],"server":"dns-bootstrap"})
@@ -85,7 +92,29 @@ echo "$HOST" > "$HOSTFILE"
 
 # SKIP_DEPLOY=1 — нас вызвал upgrade-client.sh, он развернёт демон сам (иначе
 # конфиг раскатывался бы дважды подряд).
-[[ "${SKIP_DEPLOY:-0}" == 1 ]] || bash "$DIR/scripts/install-macos-daemon.sh"
+if [[ "${SKIP_DEPLOY:-0}" == 1 ]]; then
+  echo "[OK] Конфиг обновлён (развернёт вызывающий скрипт)."
+  exit 0
+fi
+
+# sing-box check проверяет СХЕМУ, но не запуск: конфиг бывает валиден и при этом
+# роняет демон (так и вышло с detour на пустой direct). Поэтому смотрим, что
+# появилось в логе после развёртывания, и откатываемся сами.
+LOG=/var/log/sing-box.err.log
+SIZE=$(wc -c < "$LOG" 2>/dev/null || echo 0)
+bash "$DIR/scripts/install-macos-daemon.sh"
+sleep 6
+NEWLINES=$(tail -c +$((SIZE + 1)) "$LOG" 2>/dev/null | grep -c FATAL || true)
+if [[ "${NEWLINES:-0}" -gt 0 ]]; then
+  echo
+  echo "[!] Демон падает с FATAL — откатываю на прежний конфиг."
+  tail -c +$((SIZE + 1)) "$LOG" 2>/dev/null | grep -m1 FATAL | sed 's/^/    /'
+  cp "$BAK" "$LOCAL"
+  bash "$DIR/scripts/install-macos-daemon.sh" >/dev/null
+  echo "[*] Откат выполнен, туннель вернулся к прежнему состоянию."
+  exit 1
+fi
+
 echo
-echo "[OK] Готово. Проверка: curl -s https://ipinfo.io/country  (ждём LV)"
-echo "Откат: cp \"$BAK\" \"$LOCAL\" && bash $DIR/scripts/install-macos-daemon.sh"
+echo "[OK] Демон запустился без ошибок. Проверка: curl -s https://ipinfo.io/country  (ждём LV)"
+echo "Откат при необходимости: cp \"$BAK\" \"$LOCAL\" && bash $DIR/scripts/install-macos-daemon.sh"

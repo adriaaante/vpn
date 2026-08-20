@@ -183,6 +183,20 @@ NB: check-host HTTPS дал `Forbidden` (= хендшейк прошёл) с 29 
 selective = reject-catch-all, full/strict = всё зарубежное в туннель ⇒ рос. IP не
 утекает зарубежным сервисам нигде.
 
+## ⚠️ Грабля №6 — `sing-box check` НЕ проверяет запуск
+
+Конфиг может быть схемно валиден и при этом ронять демон. Так вышло 2026-08-20 при
+переводе на домен: резолверу задали `detour: direct`, `check` прошёл, а старт упал с
+`FATAL start dns/https[dns-bootstrap]: detour to an empty direct outbound makes no
+sense` — на маке пропал интернет (launchd перезапускал демон по кругу).
+
+Выводы, зашитые в `add-domain-routes.sh`:
+- `detour` резолвера должен указывать на НЕПУСТОЙ outbound: заводим отдельный
+  `direct-dns` с `connect_timeout` (пустой `direct` sing-box отвергает);
+- `domain_strategy` у outbound в 1.12+ устарел и тоже валит старт — не использовать;
+- после развёртывания скрипт читает ТОЛЬКО НОВЫЕ строки `/var/log/sing-box.err.log`
+  (запоминает размер файла до) и при `FATAL` откатывается сам.
+
 ## Поиск живого маршрута: `scripts/path-probe.sh`
 
 Когда `vpn-doctor` вынес «TLS режут на пути», этот скрипт ищет, куда ещё можно
