@@ -39,8 +39,10 @@ for k,v in {"__SERVER_IP__":IP,"__VLESS_UUID__":UUID,
     tpl=tpl.replace(k,v)
 src=json.loads(tpl)
 
-def vless(tag,sni):
-    o={"type":"vless","tag":tag,"server":IP,"server_port":443,"uuid":UUID,
+ALT=[(2053,"www.apple.com"),(8443,"www.cloudflare.com")]  # запасные порты (DPI режет 443)
+
+def vless(tag,sni,port=443):
+    o={"type":"vless","tag":tag,"server":IP,"server_port":port,"uuid":UUID,
        "tls":{"enabled":True,"server_name":sni,"utls":{"enabled":True,"fingerprint":"chrome"},
               "reality":{"enabled":True,"public_key":PBK,"short_id":SID}}}
     if FLOW: o["flow"]=FLOW
@@ -48,6 +50,8 @@ def vless(tag,sni):
 tags=[]; vs=[]
 for d in DECOYS:
     t="reality-"+d.split(".")[-2]; tags.append(t); vs.append(vless(t,d))
+for port,d in ALT:
+    t=f"reality-alt{port}"; tags.append(t); vs.append(vless(t,d,port))
 src["outbounds"]=[
     {"type":"selector","tag":"proxy","outbounds":["auto"]+tags,"default":"auto"},
     {"type":"urltest","tag":"auto","outbounds":tags,"url":"https://www.gstatic.com/generate_204",

@@ -60,6 +60,8 @@ name() {
     reality-mozilla)    echo "Reality · mozilla.org";;
     reality-icloud)     echo "Reality · icloud.com";;
     reality-samsung)    echo "Reality · samsung.com";;
+    reality-alt2053)    echo "Reality · порт 2053";;
+    reality-alt8443)    echo "Reality · порт 8443";;
     *)                  echo "$1";;
   esac
 }

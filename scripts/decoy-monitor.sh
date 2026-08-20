@@ -69,8 +69,11 @@ for d in "${DECOYS[@]}"; do
     log "переключаю decoy: $CUR -> $d"
     SNID="$d" python3 - "$CFG" <<'PY'
 import json,os,sys
-p=sys.argv[1]; d=json.load(open(p)); t=d["inbounds"][0]["tls"]
-t["server_name"]=os.environ["SNID"]; t["reality"]["handshake"]["server"]=os.environ["SNID"]
+p=sys.argv[1]; d=json.load(open(p))
+for i in d["inbounds"]:
+    if i.get("type")!="vless": continue
+    t=i["tls"]
+    t["server_name"]=os.environ["SNID"]; t["reality"]["handshake"]["server"]=os.environ["SNID"]
 json.dump(d,open(p,"w"),indent=2)
 PY
     sing-box check -c "$CFG" >/dev/null 2>&1 && systemctl restart sing-box

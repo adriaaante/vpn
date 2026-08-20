@@ -29,13 +29,13 @@
     {
       "type": "selector",
       "tag": "proxy",
-      "outbounds": ["auto", "vless-reality", "reality-cloudflare", "reality-google", "reality-mozilla", "reality-icloud", "reality-samsung"],
+      "outbounds": ["auto", "vless-reality", "reality-cloudflare", "reality-google", "reality-mozilla", "reality-icloud", "reality-samsung", "reality-alt2053", "reality-alt8443"],
       "default": "auto"
     },
     {
       "type": "urltest",
       "tag": "auto",
-      "outbounds": ["vless-reality", "reality-cloudflare", "reality-google", "reality-mozilla", "reality-icloud", "reality-samsung"],
+      "outbounds": ["vless-reality", "reality-cloudflare", "reality-google", "reality-mozilla", "reality-icloud", "reality-samsung", "reality-alt2053", "reality-alt8443"],
       "url": "https://www.gstatic.com/generate_204",
       "interval": "2m",
       "tolerance": 50,
@@ -142,6 +142,42 @@
       "tls": {
         "enabled": true,
         "server_name": "www.samsung.com",
+        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "reality": {
+          "enabled": true,
+          "public_key": "__REALITY_PUBLIC_KEY__",
+          "short_id": "__REALITY_SHORT_ID__"
+        }
+      }
+    },
+    {
+      "type": "vless",
+      "tag": "reality-alt2053",
+      "server": "__SERVER_IP__",
+      "server_port": 2053,
+      "uuid": "__VLESS_UUID__",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.apple.com",
+        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "reality": {
+          "enabled": true,
+          "public_key": "__REALITY_PUBLIC_KEY__",
+          "short_id": "__REALITY_SHORT_ID__"
+        }
+      }
+    },
+    {
+      "type": "vless",
+      "tag": "reality-alt8443",
+      "server": "__SERVER_IP__",
+      "server_port": 8443,
+      "uuid": "__VLESS_UUID__",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.cloudflare.com",
         "utls": { "enabled": true, "fingerprint": "chrome" },
         "reality": {
           "enabled": true,
