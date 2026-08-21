@@ -21,7 +21,7 @@ PBKF="${PBKF:-/etc/sing-box/reality_public_key.txt}"
 SRV_IP="${SRV_IP:-89.46.238.74}"
 # Версия отчёта: поднимать при КАЖДОЙ правке проверок — иначе не отличить,
 # свежий скрипт отработал или закешированный старый (ловили 2026-08-20).
-DOCTOR_VER="2026-08-20.3"
+DOCTOR_VER="2026-08-21.1"
 MODE=""
 case "${1:-}" in
   --client) MODE=client ;;
@@ -63,7 +63,7 @@ echo
 echo "=== ПАРАМЕТРЫ REALITY (отпечатки, сравнивать клиент vs сервер) ==="
 PBK_FILE_VAL="$( { tr -d '[:space:]' < "$PBKF"; } 2>/dev/null || true)"
 MODE="$MODE" PBKFILE="$PBK_FILE_VAL" python3 - "$CFG" <<'PY'
-import json,sys,os,hashlib
+import json,sys,os,hashlib,base64
 
 def fp(v):
     if not v: return "—"
@@ -77,6 +77,46 @@ def dom(v):
 d = json.load(open(sys.argv[1]))
 mode = os.environ["MODE"]
 
+def _dec(s):
+    s = s.strip().replace("-", "+").replace("_", "/")
+    return base64.b64decode(s + "=" * (-len(s) % 4))
+
+def x25519_pub(priv_b64):
+    """Публичный ключ из приватного (RFC 7748). Нужен, чтобы проверять парность
+    ключей по факту, а не «по бумаге»: файл с публичным ключом мог остаться от
+    прежней пары."""
+    try:
+        k = bytearray(_dec(priv_b64))
+    except Exception:
+        return None
+    if len(k) != 32:
+        return None
+    k[0] &= 248; k[31] &= 127; k[31] |= 64
+    a = int.from_bytes(k, "little")
+    P = 2 ** 255 - 19
+    x1, x2, z2, x3, z3, swap = 9, 1, 0, 9, 1, 0
+    for t in range(254, -1, -1):
+        kt = (a >> t) & 1
+        swap ^= kt
+        if swap:
+            x2, x3 = x3, x2
+            z2, z3 = z3, z2
+        swap = kt
+        A = (x2 + z2) % P; AA = A * A % P
+        B = (x2 - z2) % P; BB = B * B % P
+        E = (AA - BB) % P
+        C = (x3 + z3) % P; D = (x3 - z3) % P
+        DA = D * A % P; CB = C * B % P
+        x3 = pow(DA + CB, 2, P)
+        z3 = x1 * pow(DA - CB, 2, P) % P
+        x2 = AA * BB % P
+        z2 = E * (AA + 121665 * E) % P
+    if swap:
+        x2, x3 = x3, x2
+        z2, z3 = z3, z2
+    u = x2 * pow(z2, P - 2, P) % P
+    return base64.urlsafe_b64encode(u.to_bytes(32, "little")).decode().rstrip("=")
+
 def show(label, sni, uuid, sid, key, keyname, flow):
     print(f"  {label}")
     print(f"    SNI (decoy)  : {dom(sni)}")
@@ -86,16 +126,39 @@ def show(label, sni, uuid, sid, key, keyname, flow):
     print(f"    flow         : {flow or '—'}")
 
 if mode == "server":
+    priv = ""
     for i in d.get("inbounds", []):
         if i.get("type") != "vless": continue
         t = i.get("tls", {}); r = t.get("reality", {})
         sid = r.get("short_id"); sid = sid[0] if isinstance(sid, list) and sid else sid
-        u = (i.get("users") or [{}])[0]
+        users = i.get("users") or []
+        u = users[0] if users else {}
+        priv = priv or r.get("private_key") or ""
         show(f"inbound  порт {i.get('listen_port')}", t.get("server_name"),
              u.get("uuid"), sid, r.get("private_key"), "private_key", u.get("flow"))
         print(f"    handshake    : {dom((r.get('handshake') or {}).get('server'))}")
+        # Пустой список users = сервер не пустит НИКОГО ('unknown UUID'), даже
+        # тебя. Раньше это было видно только по прочерку в строке uuid.
+        if not users:
+            print("    ⚠️ ПОЛЬЗОВАТЕЛЕЙ НЕТ — сюда не пустит никого")
+        else:
+            names = ", ".join(f"{x.get('name') or '?'}={fp(x.get('uuid'))}" for x in users)
+            print(f"    пользователи : {len(users)} — {names}")
     pub = os.environ.get("PBKFILE", "")
     print(f"  public_key (файл, его же держит клиент): {fp(pub)}  (len={len(pub)})")
+    # Парность проверяем вычислением, а не сверкой дат: приватный ключ могли
+    # заменить (fix-reality-sni.sh это делает), а файл с публичным оставить
+    # прежним — тогда сервер отвергает всех с 'invalid connection'.
+    derived = x25519_pub(priv) if priv else None
+    if derived is None:
+        print("  парность ключей: проверить не удалось (приватный ключ не прочитан)")
+    elif not pub:
+        print(f"  публичный ключ ИЗ приватного: {fp(derived)} — сверь с клиентским")
+    elif derived == pub:
+        print(f"  парность ключей: ✓ сходится (публичный {fp(derived)})")
+    else:
+        print(f"  парность ключей: ✗ НЕ СХОДИТСЯ — файл {fp(pub)}, а из приватного {fp(derived)}")
+        print("     клиентам надо раздать публичный ключ, посчитанный из приватного")
 else:
     for o in d.get("outbounds", []):
         if o.get("type") != "vless": continue

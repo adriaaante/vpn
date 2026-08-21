@@ -42,7 +42,13 @@ for n,u in enumerate((vless[0].get("users") if vless else []) or []):
                   # Первый ключ — твой: помечаем, чтобы панель и скрипт не дали
                   # отключить или удалить его случайно и отрезать тебе доступ.
                   "protected": n == 0})
-json.dump({"users":users},open(os.environ["STORE"],"w"),indent=2,ensure_ascii=False)
+# flow обязан совпадать с клиентским. Раньше apply брал его из конфига — но
+# стоит один раз собрать конфиг без пользователей, и flow исчезает навсегда.
+# Поэтому храним его в сторе.
+flow=""
+for u in ((vless[0].get("users") if vless else []) or []):
+    if u.get("flow"): flow=u["flow"]; break
+json.dump({"flow":flow,"users":users},open(os.environ["STORE"],"w"),indent=2,ensure_ascii=False)
 os.chmod(os.environ["STORE"],0o600)
 print(f"[*] Создан {os.environ['STORE']}: перенесено пользователей — {len(users)}")
 PY
@@ -66,13 +72,18 @@ cfg=os.environ["CFG"]; c=json.load(open(cfg))
 store=json.load(open(os.environ["STORE"]))
 active=[u for u in store["users"] if u.get("enabled")]
 vless=[i for i in c.get("inbounds",[]) if i.get("type")=="vless"]
-# flow берём у первого существующего пользователя: он одинаков для всех и
-# обязан совпадать с клиентским, иначе Reality отвергнет подключение.
-flow=""
+# Конфиг без единого пользователя = «unknown UUID» всем, включая владельца.
+# Один раз так и вышло — молча, потому что проверять было некому.
+if not active:
+    raise SystemExit("[!] В реестре нет ни одного включённого пользователя — "
+                     "сборка отменена, иначе доступ потеряли бы все.")
+# flow одинаков для всех и обязан совпадать с клиентским. Берём из стора;
+# конфиг — только запасной источник (в нём его может уже не быть).
+flow=store.get("flow") or ""
 for i in vless:
+    if flow: break
     for u in (i.get("users") or []):
         if u.get("flow"): flow=u["flow"]; break
-    if flow: break
 for i in vless:
     i["users"]=[{k:v for k,v in (("name",u["name"]),("uuid",u["uuid"]),("flow",flow)) if v} for u in active]
 
