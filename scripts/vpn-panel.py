@@ -327,11 +327,6 @@ box-shadow:0 24px 60px rgba(0,0,0,.55)}
 border:1px solid var(--line)}
 .pad button:active{background:var(--card2)}
 .pad button.sec{font-size:15px;color:var(--dim)}
-.phones{display:flex;gap:16px;flex-wrap:wrap}
-.phone{flex:1 1 150px;max-width:200px;margin:0}
-.phone svg{width:100%;height:auto;display:block}
-.phone figcaption{color:var(--dim);font-size:12px;line-height:1.45;margin-top:10px}
-.phone figcaption b{color:var(--fg);font-weight:600}
 /* QR вместе с логотипом: тёмная карточка, внутри белая плитка кода. */
 .qrcard{display:inline-flex;flex-direction:column;align-items:center;gap:12px;
 background:linear-gradient(160deg,#1e2431,#12151c);border:1px solid var(--line);
@@ -602,11 +597,6 @@ ul.plain{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:13.5px}
 ul.plain li{margin-bottom:5px}
 .foot{color:var(--faint);font-size:12px;margin-top:28px;padding-top:16px;
 border-top:1px solid var(--line)}
-.phones{display:flex;gap:16px;flex-wrap:wrap}
-.phone{flex:1 1 150px;max-width:200px;margin:0}
-.phone svg{width:100%;height:auto;display:block}
-.phone figcaption{color:var(--dim);font-size:12px;line-height:1.45;margin-top:10px}
-.phone figcaption b{color:var(--fg);font-weight:600}
 
 .np{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card2);
 color:var(--fg);padding:7px 13px;border-radius:9px;cursor:pointer}
@@ -620,8 +610,6 @@ color:var(--fg);padding:7px 13px;border-radius:9px;cursor:pointer}
  .lead,.dim,.qrcap,ul.plain,.foot,.steps .sub{color:#555}
  svg.logo path,svg.logo rect{fill:#111}
  .np{display:none}
- .phone figcaption{color:#555}
- .phone figcaption b{color:#111}
  h1{border-color:#dfe3ea}
  header{border-color:#dfe3ea}
 }
@@ -634,77 +622,6 @@ def deep_link(url, name):
     имя профиля — во фрагменте после #."""
     return ("sing-box://import-remote-profile?url="
             + urllib.parse.quote(url, safe="") + "#" + urllib.parse.quote(name))
-
-
-def _phone(title, body, cap):
-    return (f'<figure class="phone"><svg viewBox="0 0 200 330" role="img">'
-            f'<rect x="1" y="1" width="198" height="328" rx="26" fill="#0f1218" '
-            f'stroke="#2b3242"/><rect x="72" y="9" width="56" height="7" rx="3.5" fill="#2b3242"/>'
-            f'<text x="18" y="47" fill="#eef1f7" font-size="17" font-weight="700" '
-            f'font-family="-apple-system,Segoe UI,Roboto,sans-serif">{title}</text>{body}'
-            f'</svg><figcaption>{cap}</figcaption></figure>')
-
-
-def app_screens(url):
-    """Экраны приложения — это СХЕМЫ, нарисованные по шагам, а не фотографии.
-    Нужны, чтобы человек узнал нужное поле, а не искал наугад."""
-    short = url if len(url) <= 26 else url[:24] + "…"
-    f = 'font-family="-apple-system,Segoe UI,Roboto,sans-serif"'
-
-    tabs = ('<line x1="10" y1="286" x2="190" y2="286" stroke="#232939"/>'
-            '<text x="30" y="308" fill="#6d768a" font-size="9" text-anchor="middle" %s>Dashboard</text>'
-            '<text x="79" y="308" fill="#5b8dff" font-size="9" text-anchor="middle" %s>Profiles</text>'
-            '<text x="122" y="308" fill="#6d768a" font-size="9" text-anchor="middle" %s>Log</text>'
-            '<text x="168" y="308" fill="#6d768a" font-size="9" text-anchor="middle" %s>Settings</text>'
-            % (f, f, f, f))
-
-    a = (f'<circle cx="172" cy="41" r="13" fill="#5b8dff"/>'
-         f'<circle cx="172" cy="41" r="19" fill="none" stroke="#5b8dff" opacity=".35"/>'
-         f'<text x="172" y="47" fill="#fff" font-size="19" text-anchor="middle" {f}>+</text>'
-         f'<rect x="16" y="70" width="168" height="52" rx="12" fill="#161a22" stroke="#232939" '
-         f'stroke-dasharray="4 4"/>'
-         f'<text x="100" y="101" fill="#6d768a" font-size="11" text-anchor="middle" {f}>'
-         f'пока пусто</text>' + tabs)
-
-    b = (f'<text x="18" y="76" fill="#6d768a" font-size="9" {f}>NAME</text>'
-         f'<rect x="16" y="82" width="168" height="30" rx="9" fill="#161a22" stroke="#232939"/>'
-         f'<text x="27" y="102" fill="#eef1f7" font-size="12" {f}>FutureFlow</text>'
-         f'<text x="18" y="134" fill="#6d768a" font-size="9" {f}>TYPE</text>'
-         f'<rect x="16" y="140" width="168" height="30" rx="9" fill="#161a22" stroke="#232939"/>'
-         f'<rect x="128" y="142" width="54" height="26" rx="8" fill="#5b8dff"/>'
-         f'<text x="42" y="159" fill="#6d768a" font-size="11" text-anchor="middle" {f}>Local</text>'
-         f'<text x="88" y="159" fill="#6d768a" font-size="11" text-anchor="middle" {f}>iCloud</text>'
-         f'<text x="155" y="159" fill="#fff" font-size="11" text-anchor="middle" font-weight="600" {f}>'
-         f'Remote</text>'
-         f'<text x="18" y="192" fill="#5b8dff" font-size="9" {f}>URL</text>'
-         f'<rect x="16" y="198" width="168" height="34" rx="9" fill="#161a22" stroke="#5b8dff"/>'
-         f'<text x="27" y="219" fill="#eef1f7" font-size="8.5" '
-         f'font-family="ui-monospace,Menlo,monospace">{html.escape(short)}</text>'
-         f'<rect x="16" y="250" width="168" height="32" rx="10" fill="#5b8dff"/>'
-         f'<text x="100" y="271" fill="#fff" font-size="12" font-weight="600" text-anchor="middle" {f}>'
-         f'Create</text>' + tabs)
-
-    c = (f'<rect x="16" y="70" width="168" height="64" rx="14" fill="#161a22" stroke="#232939"/>'
-         f'<text x="30" y="97" fill="#eef1f7" font-size="13" font-weight="600" {f}>Enable</text>'
-         f'<rect x="126" y="82" width="44" height="26" rx="13" fill="#41d19b"/>'
-         f'<circle cx="157" cy="95" r="10" fill="#fff"/>'
-         f'<text x="30" y="119" fill="#41d19b" font-size="10" {f}>Connected</text>'
-         f'<rect x="16" y="148" width="168" height="40" rx="12" fill="#161a22" stroke="#232939"/>'
-         f'<text x="30" y="173" fill="#eef1f7" font-size="12" {f}>FutureFlow</text>'
-         f'<path d="M158 168 l5 5 l9 -11" stroke="#41d19b" stroke-width="2.4" fill="none" '
-         f'stroke-linecap="round" stroke-linejoin="round"/>'
-         '<line x1="10" y1="286" x2="190" y2="286" stroke="#232939"/>'
-         f'<text x="30" y="308" fill="#5b8dff" font-size="9" text-anchor="middle" {f}>Dashboard</text>'
-         f'<text x="79" y="308" fill="#6d768a" font-size="9" text-anchor="middle" {f}>Profiles</text>'
-         f'<text x="122" y="308" fill="#6d768a" font-size="9" text-anchor="middle" {f}>Log</text>'
-         f'<text x="168" y="308" fill="#6d768a" font-size="9" text-anchor="middle" {f}>Settings</text>')
-
-    return ('<div class="phones">'
-            + _phone("Profiles", a, "1. Вкладка <b>Profiles</b> → синий плюс справа сверху")
-            + _phone("New Profile", b, "2. Type — <b>Remote</b>, ссылку вставить в поле <b>URL</b>, "
-                                       "затем <b>Create</b>")
-            + _phone("Dashboard", c, "3. Вкладка <b>Dashboard</b> → включить переключатель")
-            + '</div>')
 
 
 def guide_html(name):
@@ -739,11 +656,12 @@ def guide_html(name):
         <a href="{APP_URL}">{APP_URL}</a>. Приложение бесплатное. Пока его нет,
         код сканировать бессмысленно.</div></li>
       <li><b>Наведите камеру на код</b>
-        <div class="sub">Телефон предложит открыть в sing-box — согласитесь,
-        профиль добавится сам.</div></li>
-      <li><b>Не предложил — добавьте вручную</b>
-        <div class="sub">В приложении: вкладка Profiles → «+» → Type: <i>Remote</i> →
-        в поле URL вставьте адрес → Create.</div>
+        <div class="sub">Телефон предложит открыть в sing-box — согласитесь.
+        В приложении нажмите <b>Import</b>, затем <b>Create</b>. Галочку
+        <i>Auto update</i> и интервал <i>60</i> оставьте как есть.</div></li>
+      <li><b>Не предложил открыть приложение — добавьте вручную</b>
+        <div class="sub">Вкладка Profiles → «+» → Type: <i>Remote</i> →
+        вставьте адрес в поле URL → Create.</div>
         <div class="link">{html.escape(url)}</div></li>
       <li><b>Включите переключатель на вкладке Dashboard</b>
         <div class="sub">Первый раз система попросит разрешение на VPN-профиль —
@@ -754,11 +672,6 @@ def guide_html(name):
     </ol>
   </div>
 </div>
-
-<div class="card"><h2>Как это выглядит в приложении</h2>
-{app_screens(url)}
-<div class="qrcap" style="text-align:left;margin-top:12px">Схемы экранов: у вас
-приложение выглядит так же, названия полей — английские.</div></div>
 
 <div class="card"><h2>Важное</h2><ul class="plain">
 <li>Ссылка работает, только пока владелец держит выдачу открытой. Не успели —
@@ -790,9 +703,9 @@ def share_modal(name, opened=True):
         f'<div class="col"><ol class="steps">'
         f'<li><b>Приложение sing-box VT</b>'
         f'<div class="sub">App Store, бесплатное. Для iPhone, iPad и Mac.</div></li>'
-        f'<li><b>New Profile → Type: Remote</b>'
-        f'<div class="sub">Навести камеру на код или вставить ссылку в поле URL.</div></li>'
-        f'<li><b>Save и включить переключатель</b>'
+        f'<li><b>Камера на код → Import → Create</b>'
+        f'<div class="sub">Или вручную: New Profile → Type: Remote → ссылка в поле URL.</div></li>'
+        f'<li><b>Включить переключатель</b>'
         f'<div class="sub">Система спросит разрешение на VPN — согласиться.</div></li>'
         f'</ol></div></div>'
         f'<div class="linkrow"><code>{html.escape(url)}</code><span class="tag">по имени</span></div>'
