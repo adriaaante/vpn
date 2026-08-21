@@ -693,12 +693,16 @@ def deep_link(url, name):
 # библиотек и без AES: PBKDF2-HMAC-SHA256 даёт два ключа, поток шифра —
 # HMAC(ключ, nonce||счётчик), поверх — HMAC-тег (encrypt-then-MAC).
 #
+# Итераций 20 000, а не 200 000: памятку открывают и по http со своего сервера,
+# где браузер не даёт crypto.subtle, и PBKDF2 считается чистым JS. На стойкость
+# это влияет мало — её и так определяют четыре цифры.
+#
 # Честно про стойкость: четыре цифры — это 10 000 вариантов, и подбор на
 # видеокарте займёт секунды. Это защита от пересылки дальше по цепочке
 # «знакомый знакомому», а не от целенаправленного взлома. Настоящая защита
 # прежняя: ключ персональный, отзывается одной кнопкой, ссылка живёт только
 # во время выдачи.
-GUIDE_ITERS = 200000
+GUIDE_ITERS = 20000
 
 
 def seal(text, pin):
@@ -719,10 +723,86 @@ def seal(text, pin):
 
 
 GUIDE_JS = """
+/* Чистый JS на случай, когда crypto.subtle недоступен: на http:// (не localhost)
+   браузер его не даёт, а памятку мы отдаём именно по http со своего сервера.
+   Реализация SHA-256 → HMAC → PBKDF2 по RFC; сверена с WebCrypto на векторах. */
+const K256 = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+
+function sha256(bytes){
+  const ml = bytes.length;
+  const withOne = new Uint8Array((((ml + 8) >> 6) + 1) << 6);
+  withOne.set(bytes); withOne[ml] = 0x80;
+  const dv = new DataView(withOne.buffer);
+  dv.setUint32(withOne.length - 4, (ml << 3) >>> 0);
+  dv.setUint32(withOne.length - 8, Math.floor(ml / 536870912));
+  let h = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const w = new Uint32Array(64);
+  for (let off = 0; off < withOne.length; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i*4);
+    for (let i = 16; i < 64; i++) {
+      const a = w[i-15], b = w[i-2];
+      const s0 = ((a>>>7)|(a<<25)) ^ ((a>>>18)|(a<<14)) ^ (a>>>3);
+      const s1 = ((b>>>17)|(b<<15)) ^ ((b>>>19)|(b<<13)) ^ (b>>>10);
+      w[i] = (w[i-16] + s0 + w[i-7] + s1) >>> 0;
+    }
+    let [a,b,c,d,e,f,g,hh] = h;
+    for (let i = 0; i < 64; i++) {
+      const S1 = ((e>>>6)|(e<<26)) ^ ((e>>>11)|(e<<21)) ^ ((e>>>25)|(e<<7));
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (hh + S1 + ch + K256[i] + w[i]) >>> 0;
+      const S0 = ((a>>>2)|(a<<30)) ^ ((a>>>13)|(a<<19)) ^ ((a>>>22)|(a<<10));
+      const mj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + mj) >>> 0;
+      hh=g; g=f; f=e; e=(d+t1)>>>0; d=c; c=b; b=a; a=(t1+t2)>>>0;
+    }
+    h = [(h[0]+a)>>>0,(h[1]+b)>>>0,(h[2]+c)>>>0,(h[3]+d)>>>0,
+         (h[4]+e)>>>0,(h[5]+f)>>>0,(h[6]+g)>>>0,(h[7]+hh)>>>0];
+  }
+  const out = new Uint8Array(32), ov = new DataView(out.buffer);
+  h.forEach((x,i) => ov.setUint32(i*4, x));
+  return out;
+}
+
+function hmac(key, msg){
+  let k = key.length > 64 ? sha256(key) : key;
+  const pad = new Uint8Array(64); pad.set(k);
+  const o = new Uint8Array(64), i = new Uint8Array(64);
+  for (let j = 0; j < 64; j++) { o[j] = pad[j] ^ 0x5c; i[j] = pad[j] ^ 0x36 }
+  const inner = new Uint8Array(64 + msg.length); inner.set(i); inner.set(msg, 64);
+  const ih = sha256(inner);
+  const outer = new Uint8Array(96); outer.set(o); outer.set(ih, 64);
+  return sha256(outer);
+}
+
+function pbkdf2(pass, salt, iters, dkLen){
+  const out = new Uint8Array(dkLen);
+  let done = 0, block = 1;
+  while (done < dkLen) {
+    const b = new Uint8Array(salt.length + 4); b.set(salt);
+    new DataView(b.buffer).setUint32(salt.length, block);
+    let u = hmac(pass, b), acc = u.slice();
+    for (let i = 1; i < iters; i++) {
+      u = hmac(pass, u);
+      for (let j = 0; j < 32; j++) acc[j] ^= u[j];
+    }
+    out.set(acc.subarray(0, Math.min(32, dkLen - done)), done);
+    done += 32; block++;
+  }
+  return out;
+}
+
 const BOX = %s;
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const cat = (...a) => { const n = a.reduce((s,x)=>s+x.length,0), r = new Uint8Array(n);
   let o = 0; for (const x of a) { r.set(x,o); o += x.length } return r };
+const fast = () => !!(window.crypto && crypto.subtle);
 let pin = "";
 
 function draw(){
@@ -731,20 +811,33 @@ function draw(){
 function tap(d){ if (pin.length < BOX.len) { pin += d; draw(); if (pin.length === BOX.len) go() } }
 function del(){ pin = pin.slice(0,-1); draw() }
 
+async function derive(p){
+  const pw = new TextEncoder().encode(p), salt = b64(BOX.salt);
+  if (fast()) {
+    const base = await crypto.subtle.importKey("raw", pw, "PBKDF2", false, ["deriveBits"]);
+    return new Uint8Array(await crypto.subtle.deriveBits(
+      {name:"PBKDF2", salt, iterations:BOX.iters, hash:"SHA-256"}, base, 512));
+  }
+  return pbkdf2(pw, salt, BOX.iters, 64);
+}
+async function mac(key, msg){
+  if (fast()) {
+    const k = await crypto.subtle.importKey("raw", key, {name:"HMAC", hash:"SHA-256"}, false, ["sign"]);
+    return new Uint8Array(await crypto.subtle.sign("HMAC", k, msg));
+  }
+  return hmac(key, msg);
+}
+
 async function unseal(p){
-  const enc = new TextEncoder();
-  const base = await crypto.subtle.importKey("raw", enc.encode(p), "PBKDF2", false, ["deriveBits"]);
-  const bits = new Uint8Array(await crypto.subtle.deriveBits(
-    {name:"PBKDF2", salt:b64(BOX.salt), iterations:BOX.iters, hash:"SHA-256"}, base, 512));
-  const key = k => crypto.subtle.importKey("raw", k, {name:"HMAC", hash:"SHA-256"}, false, ["sign"]);
-  const ek = await key(bits.slice(0,32)), mk = await key(bits.slice(32));
+  const bits = await derive(p);
+  const ek = bits.slice(0,32), mk = bits.slice(32);
   const nonce = b64(BOX.nonce), ct = b64(BOX.ct), tag = b64(BOX.tag);
-  const t = new Uint8Array(await crypto.subtle.sign("HMAC", mk, cat(nonce, ct)));
+  const t = await mac(mk, cat(nonce, ct));
   if (t.length !== tag.length || t.some((v,i) => v !== tag[i])) return null;
   const out = new Uint8Array(ct.length);
   for (let i = 0, off = 0; off < ct.length; i++, off += 32) {
     const c = new Uint8Array(4); new DataView(c.buffer).setUint32(0, i);
-    const blk = new Uint8Array(await crypto.subtle.sign("HMAC", ek, cat(nonce, c)));
+    const blk = await mac(ek, cat(nonce, c));
     for (let j = 0; j < 32 && off + j < ct.length; j++) out[off+j] = ct[off+j] ^ blk[j];
   }
   return new TextDecoder().decode(out);
@@ -752,11 +845,8 @@ async function unseal(p){
 
 async function go(){
   const box = document.getElementById('lock'), err = document.getElementById('err');
-  if (!window.crypto || !crypto.subtle) {
-    err.textContent = "Этот браузер не умеет расшифровывать файл — откройте его в Safari или Chrome.";
-    return;
-  }
   err.textContent = "Проверяю…";
+  await new Promise(r => setTimeout(r, 30));   // дать браузеру перерисовать надпись
   let plain = null;
   try { plain = await unseal(pin) } catch (e) { plain = null }
   if (plain === null) { err.textContent = "Неверный код. Попробуйте ещё раз."; pin = ""; draw(); return }
@@ -791,7 +881,11 @@ def guide_html(name):
       <li><b>Сначала установите приложение sing-box VT</b>
         <div class="sub">iPhone, iPad и Mac — App Store, разработчик VIRAL TECH INC.:
         <a href="{APP_URL}">{APP_URL}</a>. Бесплатное. Пока его нет, код сканировать
-        нечем.</div></li>
+        нечем.</div>
+        <div class="sub">Если в российском App Store приложения нет, смените страну
+        аккаунта: Настройки → ваше имя → Медиа и покупки → Просмотреть → Страна
+        или регион. Подойдёт любая другая страна; карта для бесплатного приложения
+        не нужна — способ оплаты можно указать «Нет».</div></li>
       <li><b>Наведите камеру на код</b>
         <div class="sub">Телефон предложит открыть в sing-box — согласитесь.
         В приложении нажмите <b>Import</b>, затем <b>Create</b>. Галочку
@@ -850,6 +944,7 @@ def share_modal(name, opened=True):
     st, dom = server_status(), domain_info()
     host = dom.get("host") or st["ip"]
     url = share_url(name, host)
+    guide_link = url.rsplit("/", 1)[0] + "/"   # памятка лежит рядом с конфигом
     nm = html.escape(name)
     q = urllib.parse.urlencode({"name": name})
     pin = str((find_user(name) or {}).get("guide_pin") or "")
@@ -871,7 +966,9 @@ def share_modal(name, opened=True):
         f'<code>{html.escape(url.replace(host, st["ip"], 1))}</code></div>')
     return modal(
         f"cfg-{nm}", f"Настройки для «{html.escape(pretty(name))}»",
-        "Покажите код с экрана или отправьте памятку — в ней тот же код и те же шаги.",
+        "Отправьте человеку ссылку на памятку — она откроется у него в браузере "
+        "как страница. Файлом тоже можно, но во встроенном просмотре мессенджера "
+        "цифры кода не нажимаются.",
         f'<div class="split"><div class="col qrcol">{qr_card(deep_link(url, name), 196, cap="Код открывает приложение", offer_install=True)}</div>'
         f'<div class="col"><ol class="steps">'
         f'<li><b>Приложение sing-box VT</b>'
@@ -881,7 +978,9 @@ def share_modal(name, opened=True):
         f'<li><b>Включить переключатель</b>'
         f'<div class="sub">Система спросит разрешение на VPN — согласиться.</div></li>'
         f'</ol></div></div>'
-        f'<div class="linkrow"><code>{html.escape(url)}</code><span class="tag">по имени</span></div>'
+        f'<div class="linkrow"><code>{html.escape(guide_link)}</code>'
+        f'<span class="tag">памятка — её и отправляйте</span></div>'
+        f'<div class="linkrow"><code>{html.escape(url)}</code><span class="tag">профиль</span></div>'
         f'{alt}'
         f'<div class="hint">Ссылка отдаёт личный ключ без пароля — закройте выдачу сразу '
         f'после того, как человек импортировал профиль. «Закрыть выдачу» гасит только '
@@ -955,6 +1054,33 @@ def page(msg="", err=False, extra_modal=""):
 <script>{JS}</script></body></html>"""
 
 
+def share_dir(name):
+    """Каталог, из которого vpn-users.sh раздаёт конфиг этого человека."""
+    return f"/tmp/guest-{name}/{share_token(name)}"
+
+
+def publish_guide(name, tries=25):
+    """Положить памятку рядом с конфигом — чтобы человеку можно было послать
+    ССЫЛКУ, а не файл. Вложение в мессенджере открывается встроенным
+    просмотром, где скрипты не выполняются: цифры кода не нажимаются, и
+    приходится сохранять файл и открывать его браузером вручную.
+    По ссылке всё работает сразу."""
+    d = share_dir(name)
+    for _ in range(tries):
+        # Ждём не каталог, а готовый конфиг: раздача сначала СНОСИТ прежний
+        # каталог и только потом собирает файлы — попасть в это окно значит
+        # положить памятку в то, что через миг удалят.
+        if os.path.exists(os.path.join(d, "full.json")):
+            try:
+                with open(os.path.join(d, "index.html"), "w") as f:
+                    f.write(guide_html(name))
+                return True
+            except OSError:
+                return False
+        time.sleep(0.2)
+    return False
+
+
 def start_share(name):
     stop_share()
     env = dict(os.environ, STORE=STORE, CFG=CFG)
@@ -1022,6 +1148,7 @@ class Handler(BaseHTTPRequestHandler):
             if not find_user(name):
                 return self._send(page("Нет такого человека", err=True))
             start_share(name)
+            publish_guide(name)
             return self._send(page(extra_modal=share_modal(name)))
         return self._send(page())
 
@@ -1062,6 +1189,10 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 hit[0].pop("guide_pin", None)
             save_users(lst)
+            # Памятка уже лежит в раздаче — пересобираем, иначе там остался бы
+            # старый код (или его отсутствие).
+            if share_proc.get("name") == name:
+                publish_guide(name, tries=3)
             return self._send(page(f"Код на памятку {'сохранён' if pin else 'снят'}: {name}",
                                    extra_modal=share_modal(name)))
 
@@ -1103,6 +1234,7 @@ class Handler(BaseHTTPRequestHandler):
                         extra_env={"GUIDE_PIN": pin} if pin else None)
         if op == "add" and code == 0:
             start_share(name)
+            publish_guide(name)
             return self._send(page(f"Готово: {name} добавлен", extra_modal=share_modal(name)))
         return self._send(page(out or "Готово", err=(code != 0)))
 
