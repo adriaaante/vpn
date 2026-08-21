@@ -12,8 +12,7 @@ SRV="${SRV:-root@89.46.238.74}"
 PORT="${PANEL_PORT:-8787}"
 BRANCH_GREP="${BRANCH_GREP:-claude}"
 
-TOKEN="$(python3 -c 'import secrets;print(secrets.token_urlsafe(16))')"
-URL="http://127.0.0.1:$PORT/?t=$TOKEN"
+URL="http://127.0.0.1:$PORT/"
 
 opener() { command -v open >/dev/null 2>&1 && open "$1" || { command -v xdg-open >/dev/null 2>&1 && xdg-open "$1"; } || echo "Открой вручную: $1"; }
 
@@ -21,9 +20,9 @@ echo "[*] Поднимаю туннель к $SRV и запускаю панел
 echo "[*] Адрес (откроется сам): $URL"
 ( sleep 4; opener "$URL" >/dev/null 2>&1 ) &
 
-# Токен передаём в окружение удалённой панели; репозиторий на сервере обновляем,
-# чтобы панель и vpn-users.sh были одной версии.
-REMOTE="cd /root/vpn && git fetch -q origin && git checkout \$(git branch -r | grep -m1 '$BRANCH_GREP') -- scripts && PANEL_TOKEN='$TOKEN' PANEL_PORT='$PORT' python3 scripts/vpn-panel.py"
+# Панель спрашивает PIN (печатается ниже при старте). Репозиторий на сервере
+# обновляем целиком по нужным каталогам: без assets логотип не доезжает.
+REMOTE="cd /root/vpn && git fetch -q origin && git checkout \$(git branch -r | grep -m1 '$BRANCH_GREP') -- scripts assets && PANEL_PORT='$PORT' python3 scripts/vpn-panel.py"
 
 # Длинный SSH к зарубежному адресу иногда рвут на пути или он отваливается по
 # простою — тогда панель просто пропадала. Держим keepalive и переподключаемся,

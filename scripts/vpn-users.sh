@@ -8,6 +8,7 @@
 #   bash scripts/vpn-users.sh disable ivan    # отключить (ключ сохраняется)
 #   bash scripts/vpn-users.sh enable ivan     # вернуть
 #   bash scripts/vpn-users.sh remove ivan     # удалить насовсем
+#   bash scripts/vpn-users.sh apply           # пересобрать конфиг из реестра
 #
 # Источник правды — /etc/sing-box/users.json; из него собирается список users во
 # ВСЕХ vless-инбаундах (443/2053/8443), иначе человек отвалится при переезде на
@@ -71,8 +72,26 @@ for i in vless:
     if flow: break
 for i in vless:
     i["users"]=[{k:v for k,v in (("name",u["name"]),("uuid",u["uuid"]),("flow",flow)) if v} for u in active]
+
+# Запреты по людям: правило route с "user" + reject. Проверено на sing-box 1.13 —
+# схема валидна и демон стартует. Список правил пересобираем целиком из стора,
+# поэтому ручные правки route в конфиге не переживут apply (других правил тут нет).
+rules=[]
+for u in active:
+    sufs=[str(x).strip().lower().lstrip("*") for x in u.get("block_domains",[]) if str(x).strip()]
+    tlds=[str(x).strip().lower() for x in u.get("block_tld",[]) if str(x).strip()]
+    tlds=[t if t.startswith(".") else "."+t for t in tlds]
+    both=sorted(set(s for s in sufs+tlds if s))
+    if both:
+        rules.append({"user":[u["name"]],"domain_suffix":both,"action":"reject"})
+if rules:
+    c["route"]={"rules":rules,"final":"direct"}
+else:
+    c.pop("route",None)
 json.dump(c,open(cfg,"w"),indent=2,ensure_ascii=False)
 print("[*] Активны:", ", ".join(u["name"] for u in active) or "никого")
+if rules:
+    print("[*] Запреты:", "; ".join(f'{r["user"][0]}: {len(r["domain_suffix"])}' for r in rules))
 PY
   if [[ $? -ne 0 ]]; then echo "[!] Сборка не удалась — откат."; cp "$bak" "$CFG"; return 1; fi
   if have sing-box && ! sing-box check -c "$CFG"; then
@@ -192,6 +211,11 @@ PY
   share)
     [[ -n "$NAME" ]] || { echo "Использование: vpn-users.sh share <имя>"; exit 2; }
     share "$NAME"
+    ;;
+  apply)
+    # Пересобрать конфиг из стора: пользователи + их запреты. Зовётся панелью
+    # после правки ограничений.
+    apply
     ;;
   *)
     sed -n '3,18p' "$0"
