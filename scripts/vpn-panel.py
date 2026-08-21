@@ -108,8 +108,22 @@ def users():
 
 
 def save_users(lst):
+    """Сохранить реестр, НЕ потеряв остальные поля.
+
+    Раньше здесь писалось ровно {"users": ...} — и `flow` из реестра пропадал бы
+    при первой же правке ограничений. Именно такой молчаливый обрез (конфиг без
+    flow, потом конфиг без пользователей) уже стоил дня простоя.
+    """
+    try:
+        with open(STORE) as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            data = {}
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    data["users"] = lst
     with open(STORE, "w") as f:
-        json.dump({"users": lst}, f, indent=2, ensure_ascii=False)
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 def find_user(name):
