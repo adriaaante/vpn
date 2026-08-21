@@ -38,7 +38,10 @@ vless=[i for i in c.get("inbounds",[]) if i.get("type")=="vless"]
 users=[]
 for n,u in enumerate((vless[0].get("users") if vless else []) or []):
     users.append({"name":u.get("name") or ("owner" if n==0 else f"user{n}"),
-                  "uuid":u["uuid"],"enabled":True,"note":"перенесён из config.json"})
+                  "uuid":u["uuid"],"enabled":True,"note":"перенесён из config.json",
+                  # Первый ключ — твой: помечаем, чтобы панель и скрипт не дали
+                  # отключить или удалить его случайно и отрезать тебе доступ.
+                  "protected": n == 0})
 json.dump({"users":users},open(os.environ["STORE"],"w"),indent=2,ensure_ascii=False)
 os.chmod(os.environ["STORE"],0o600)
 print(f"[*] Создан {os.environ['STORE']}: перенесено пользователей — {len(users)}")
@@ -185,6 +188,9 @@ PY
     ;;
   enable|disable)
     [[ -n "$NAME" ]] || { echo "Использование: vpn-users.sh $CMD <имя>"; exit 2; }
+    if [[ "$CMD" == disable && "$(get_field "$NAME" protected)" == "True" ]]; then
+      echo "«$NAME» — владелец, его отключение отрежет доступ тебе самому. Отказано."; exit 1
+    fi
     NAME="$NAME" ON="$([[ "$CMD" == enable ]] && echo 1 || echo 0)" STORE="$STORE" python3 <<'PY'
 import json,os,sys
 d=json.load(open(os.environ["STORE"])); n=os.environ["NAME"]; on=os.environ["ON"]=="1"
@@ -198,6 +204,9 @@ PY
     ;;
   remove)
     [[ -n "$NAME" ]] || { echo "Использование: vpn-users.sh remove <имя>"; exit 2; }
+    if [[ "$(get_field "$NAME" protected)" == "True" ]]; then
+      echo "«$NAME» — владелец, удаление отрежет доступ тебе самому. Отказано."; exit 1
+    fi
     NAME="$NAME" STORE="$STORE" python3 <<'PY'
 import json,os,sys
 d=json.load(open(os.environ["STORE"])); n=os.environ["NAME"]

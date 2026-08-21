@@ -24,3 +24,7 @@ configs/server-host.txt
 # Прочее
 .DS_Store
 *.log
+
+# Кеш питона от py_compile — в репозиторий не нужен
+__pycache__/
+*.pyc
