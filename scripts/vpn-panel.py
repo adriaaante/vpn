@@ -13,6 +13,9 @@
 Правки конфига идут только через vpn-users.sh — там бэкап, sing-box check и
 откат. Панель сама конфиг sing-box не трогает, только реестр пользователей.
 """
+import base64
+import hashlib
+import hmac
 import html
 import json
 import os
@@ -537,6 +540,11 @@ def add_modal():
         '<input name="name" placeholder="например sasha-tpk" required '
         'pattern="[A-Za-z0-9._-]+" title="латинские буквы, цифры, дефис">'
         '<div class="hint">Русские буквы и пробелы не подойдут — имя используется в ссылках.</div>'
+        '<label>Код на памятку (необязательно)</label>'
+        '<input name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="8" '
+        'placeholder="4–8 цифр, можно оставить пустым">'
+        '<div class="hint">Если задать — памятку получится открыть только с этим кодом. '
+        'Код меняется потом в «Настройках».</div>'
         '<div class="actions"><button type="button" onclick="closeM(\'add\')">Отмена</button>'
         '<button class="primary">Создать и показать настройки</button></div></form>')
 
@@ -556,7 +564,8 @@ def qr_card(url, size=228, cap="Наведите камеру телефона �
     fix = ('<form method="post" action="/act" style="margin-top:8px">'
            '<input type="hidden" name="op" value="qrencode">'
            '<button>Включить QR-коды</button></form>' if offer_install else "")
-    inner = (f'<div class="qrtile">{svg}</div><div class="qrcap">{html.escape(cap)}</div>'
+    tail = f'<div class="qrcap">{html.escape(cap)}</div>' if cap else ""
+    inner = (f'<div class="qrtile">{svg}</div>{tail}'
              if svg else
              '<div class="qrcap" style="max-width:220px">QR не построен: на сервере нет '
              'qrencode. Отправьте ссылку текстом.</div>' + fix)
@@ -611,10 +620,22 @@ ul.plain{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:13.5px}
 ul.plain li{margin-bottom:5px}
 .foot{color:var(--faint);font-size:12px;margin-top:28px;padding-top:16px;
 border-top:1px solid var(--line)}
+/* Замок: тот же вид, что у входа в панель — цифры как на телефоне. */
+.lock{max-width:300px;margin:8px auto 34px;text-align:center}
+.lock p{color:var(--dim);font-size:13.5px;margin:0 0 18px}
+.dots{display:flex;gap:13px;justify-content:center;margin-bottom:22px}
+.dots i{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--line);display:block}
+.dots i.f{background:var(--accent);border-color:var(--accent)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}
+.pad button{font:inherit;font-size:21px;padding:15px 0;border-radius:14px;background:var(--card);
+border:1px solid var(--line);color:var(--fg);cursor:pointer}
+.pad button:active{background:var(--card2)}
+.pad button.sec{font-size:14px;color:var(--dim)}
+.err{color:var(--dim);font-size:12.5px;min-height:18px;margin-top:14px}
 
-.np{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card2);
-color:var(--fg);padding:7px 13px;border-radius:9px;cursor:pointer}
-/* На печати/в PDF — светлая тема, иначе уходит тонна тонера и плохо читается. */
+
+/* Кнопки «сохранить в PDF» в памятке нет намеренно, но напечатать страницу
+   браузер даёт всегда — пусть это хотя бы выглядит прилично и не жрёт тонер. */
 @media print{
  body{background:#fff;color:#111}
  .sheet{padding:0}
@@ -623,7 +644,6 @@ color:var(--fg);padding:7px 13px;border-radius:9px;cursor:pointer}
  .steps li:before{background:#eef0f4;border-color:#dfe3ea;color:#555}
  .lead,.dim,.qrcap,ul.plain,.foot,.steps .sub{color:#555}
  svg.logo path,svg.logo rect{fill:#111}
- .np{display:none}
  h1{border-color:#dfe3ea}
  header{border-color:#dfe3ea}
 }
@@ -638,30 +658,105 @@ def deep_link(url, name):
             + urllib.parse.quote(url, safe="") + "#" + urllib.parse.quote(name))
 
 
+# ПИН на памятку: внутри файла лежит не ссылка, а шифртекст — без ПИНа из него
+# ничего не достать даже «посмотреть исходник».
+#
+# Конструкция собрана из того, что есть и в питоне, и в браузере, без внешних
+# библиотек и без AES: PBKDF2-HMAC-SHA256 даёт два ключа, поток шифра —
+# HMAC(ключ, nonce||счётчик), поверх — HMAC-тег (encrypt-then-MAC).
+#
+# Честно про стойкость: четыре цифры — это 10 000 вариантов, и подбор на
+# видеокарте займёт секунды. Это защита от пересылки дальше по цепочке
+# «знакомый знакомому», а не от целенаправленного взлома. Настоящая защита
+# прежняя: ключ персональный, отзывается одной кнопкой, ссылка живёт только
+# во время выдачи.
+GUIDE_ITERS = 200000
+
+
+def seal(text, pin):
+    salt, nonce = os.urandom(16), os.urandom(12)
+    dk = hashlib.pbkdf2_hmac("sha256", pin.encode(), salt, GUIDE_ITERS, 64)
+    ek, mk = dk[:32], dk[32:]
+    data = text.encode()
+    stream = b""
+    i = 0
+    while len(stream) < len(data):
+        stream += hmac.new(ek, nonce + i.to_bytes(4, "big"), hashlib.sha256).digest()
+        i += 1
+    ct = bytes(a ^ b for a, b in zip(data, stream))
+    tag = hmac.new(mk, nonce + ct, hashlib.sha256).digest()
+    b = lambda x: base64.b64encode(x).decode()
+    return {"salt": b(salt), "nonce": b(nonce), "ct": b(ct), "tag": b(tag),
+            "iters": GUIDE_ITERS, "len": len(pin)}
+
+
+GUIDE_JS = """
+const BOX = %s;
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const cat = (...a) => { const n = a.reduce((s,x)=>s+x.length,0), r = new Uint8Array(n);
+  let o = 0; for (const x of a) { r.set(x,o); o += x.length } return r };
+let pin = "";
+
+function draw(){
+  document.querySelectorAll('#dots i').forEach((d,i)=>d.classList.toggle('f', i < pin.length));
+}
+function tap(d){ if (pin.length < BOX.len) { pin += d; draw(); if (pin.length === BOX.len) go() } }
+function del(){ pin = pin.slice(0,-1); draw() }
+
+async function unseal(p){
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey("raw", enc.encode(p), "PBKDF2", false, ["deriveBits"]);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits(
+    {name:"PBKDF2", salt:b64(BOX.salt), iterations:BOX.iters, hash:"SHA-256"}, base, 512));
+  const key = k => crypto.subtle.importKey("raw", k, {name:"HMAC", hash:"SHA-256"}, false, ["sign"]);
+  const ek = await key(bits.slice(0,32)), mk = await key(bits.slice(32));
+  const nonce = b64(BOX.nonce), ct = b64(BOX.ct), tag = b64(BOX.tag);
+  const t = new Uint8Array(await crypto.subtle.sign("HMAC", mk, cat(nonce, ct)));
+  if (t.length !== tag.length || t.some((v,i) => v !== tag[i])) return null;
+  const out = new Uint8Array(ct.length);
+  for (let i = 0, off = 0; off < ct.length; i++, off += 32) {
+    const c = new Uint8Array(4); new DataView(c.buffer).setUint32(0, i);
+    const blk = new Uint8Array(await crypto.subtle.sign("HMAC", ek, cat(nonce, c)));
+    for (let j = 0; j < 32 && off + j < ct.length; j++) out[off+j] = ct[off+j] ^ blk[j];
+  }
+  return new TextDecoder().decode(out);
+}
+
+async function go(){
+  const box = document.getElementById('lock'), err = document.getElementById('err');
+  if (!window.crypto || !crypto.subtle) {
+    err.textContent = "Этот браузер не умеет расшифровывать файл — откройте его в Safari или Chrome.";
+    return;
+  }
+  err.textContent = "Проверяю…";
+  let plain = null;
+  try { plain = await unseal(pin) } catch (e) { plain = null }
+  if (plain === null) { err.textContent = "Неверный код. Попробуйте ещё раз."; pin = ""; draw(); return }
+  document.getElementById('secret').innerHTML = plain;
+  box.remove();
+}
+"""
+
+
 def guide_html(name):
     """Памятка для человека: одним файлом, без интернета — логотип, QR и что
     нажимать. Её можно скачать и переслать: внутри всё, включая код.
+
     Адрес сервера по IP и список запретов в памятку НЕ идут: гостю они не нужны,
-    а IP лишний раз светить незачем."""
+    а IP лишний раз светить незачем. Если у человека задан ПИН, весь блок с
+    кодом и ссылкой лежит в файле зашифрованным (см. seal) — «посмотреть
+    исходник» ничего не даст.
+    """
+    u = find_user(name) or {}
     st, dom = server_status(), domain_info()
     host = dom.get("host") or st["ip"]
     url = f"http://{host}:8080/full.json"
     nm = html.escape(name)
     deep = deep_link(url, name)
+    pin = str(u.get("guide_pin") or "")
 
-    return f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FutureFlow — доступ для {nm}</title><style>{GUIDE_CSS}</style></head><body>
-<div class="sheet">
-<header>{logo_html()}<h1>Доступ к VPN</h1><span class="sp"></span>
-<button class="np" onclick="window.print()">Сохранить в PDF</button></header>
-
-<p class="lead">Личный доступ для <b>{nm}</b>. Российские сайты идут напрямую и не
-тормозят, зарубежные — через сервер в Латвии. Настройка занимает пару минут:
-установить приложение и один раз добавить профиль.</p>
-
-<div class="split">
-  <div class="col" style="flex:0 0 auto">{qr_card(deep, cap="Код открывает приложение, а не сайт")}</div>
+    access = f"""<div class="split">
+  <div class="col" style="flex:0 0 auto">{qr_card(deep, cap="")}</div>
   <div class="col">
     <h2>Что делать</h2>
     <ol class="steps">
@@ -685,19 +780,46 @@ def guide_html(name):
         Латвия (LV). Российские сайты при этом работают как обычно.</div></li>
     </ol>
   </div>
-</div>
+</div>"""
+
+    if pin:
+        box = seal(access, pin)
+        keys = "".join(f'<button type="button" onclick="tap(\'{d}\')">{d}</button>'
+                       for d in "123456789")
+        body = (f'<div class="lock" id="lock"><p>Код из {len(pin)} цифр прислали отдельным '
+                f'сообщением — введите его, чтобы открыть инструкцию.</p>'
+                f'<div class="dots" id="dots">{"<i></i>" * len(pin)}</div>'
+                f'<div class="pad">{keys}<span></span>'
+                f'<button type="button" onclick="tap(\'0\')">0</button>'
+                f'<button type="button" class="sec" onclick="del()">←</button></div>'
+                f'<div class="err" id="err"></div></div>'
+                f'<div id="secret"></div>'
+                f'<script>{GUIDE_JS % json.dumps(box)}</script>')
+    else:
+        body = access
+
+    return f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FutureFlow — доступ для {nm}</title><style>{GUIDE_CSS}</style></head><body>
+<div class="sheet">
+<header>{logo_html()}<h1>Доступ к VPN</h1></header>
+
+<p class="lead">Личный доступ для <b>{nm}</b>. Российские сайты идут напрямую и не
+тормозят, зарубежные — через сервер в Латвии. Настройка занимает пару минут:
+установить приложение и один раз добавить профиль.</p>
+
+{body}
 
 <div class="card"><h2>Важное</h2><ul class="plain">
-<li>Ссылка живёт недолго: владелец открывает её на время установки и потом
-закрывает. Не успели — попросите открыть ещё раз.</li>
+<li>Ссылка живёт недолго: её открывают на время установки и потом закрывают.
+Не успели — попросите открыть ещё раз.</li>
 <li>Ключ персональный: по нему видно, чей он. Передавать другим нельзя — такой
 ключ отключают, остальные при этом продолжают работать.</li>
 <li>Пропал интернет при включённом VPN — выключите и включите переключатель;
-не помогло, напишите владельцу.</li>
+не помогло, напишите в FutureFlow.</li>
 </ul></div>
 
-<div class="foot">FutureFlow · памятка собрана панелью управления доступом.
-Внутри файла нет паролей — только ссылка на профиль.</div>
+<div class="foot">FutureFlow</div>
 </div></body></html>"""
 
 
@@ -707,6 +829,20 @@ def share_modal(name, opened=True):
     url = f"http://{host}:8080/full.json"
     nm = html.escape(name)
     q = urllib.parse.urlencode({"name": name})
+    pin = str((find_user(name) or {}).get("guide_pin") or "")
+    pin_state = (f'Сейчас код: <b>{html.escape(pin)}</b> — сообщите его человеку отдельным '
+                 f'сообщением, не вместе с файлом.' if pin else
+                 'Сейчас памятка без кода: кто получит файл, тот увидит инструкцию.')
+    pin_form = (f'<form method="post" action="/pin" class="row" style="margin-top:16px">'
+                f'<input type="hidden" name="name" value="{nm}">'
+                f'<input name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="8" '
+                f'placeholder="4–8 цифр, пусто — снять код" value="{html.escape(pin)}" '
+                f'style="max-width:230px">'
+                f'<button>Сохранить код</button></form>'
+                f'<div class="hint">{pin_state} Код спрашивается при открытии файла: внутри '
+                f'лежит шифртекст, «посмотреть исходник» ничего не даст. Но честно: четыре '
+                f'цифры — это 10 000 вариантов, от целенаправленного перебора они не спасут. '
+                f'Это защита от пересылки дальше по цепочке, а не от взлома.</div>')
     alt = "" if host == st["ip"] else (
         f'<div class="hint">Если по имени не откроется — запасная ссылка по адресу: '
         f'<code>http://{html.escape(st["ip"])}:8080/full.json</code></div>')
@@ -727,6 +863,7 @@ def share_modal(name, opened=True):
         f'<div class="hint">Ссылка отдаёт личный ключ без пароля — закройте выдачу сразу '
         f'после того, как человек импортировал профиль. «Закрыть выдачу» гасит только '
         f'раздачу файла: доступ, ключи и работающий туннель не трогает — ни гостю, ни вам.</div>'
+        f'{pin_form}'
         f'<div class="actions">'
         f'<a class="btn" href="/guide?{q}" target="_blank">Посмотреть памятку</a>'
         f'<a class="btn primary" href="/guide?{q}&amp;dl=1">Скачать и отправить</a>'
@@ -886,6 +1023,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(login_page())
         form = self._form()
 
+        if self.path == "/pin":
+            name = form.get("name", [""])[0]
+            pin = re.sub(r"\D", "", form.get("pin", [""])[0])
+            if pin and not 4 <= len(pin) <= 8:
+                return self._send(page("Код — от 4 до 8 цифр", err=True,
+                                       extra_modal=share_modal(name, opened=False)))
+            lst = users()
+            hit = [x for x in lst if x["name"] == name]
+            if not hit:
+                return self._send(page("Нет такого человека", err=True))
+            if pin:
+                hit[0]["guide_pin"] = pin
+            else:
+                hit[0].pop("guide_pin", None)
+            save_users(lst)
+            return self._send(page(f"Код на памятку {'сохранён' if pin else 'снят'}: {name}",
+                                   extra_modal=share_modal(name)))
+
         if self.path == "/limits":
             name = form.get("name", [""])[0]
             lst = users()
@@ -921,6 +1076,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(page("Неизвестное действие", err=True))
         code, out = run([op, name], no_share=True)
         if op == "add" and code == 0:
+            pin = re.sub(r"\D", "", form.get("pin", [""])[0])
+            if 4 <= len(pin) <= 8:
+                lst = users()
+                for x in lst:
+                    if x["name"] == name:
+                        x["guide_pin"] = pin
+                save_users(lst)
             start_share(name)
             return self._send(page(f"Готово: {name} добавлен", extra_modal=share_modal(name)))
         return self._send(page(out or "Готово", err=(code != 0)))
