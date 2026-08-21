@@ -44,7 +44,36 @@ show_ip() {
   local ip geo
   ip="$(curl -fsS --max-time 6 https://ipinfo.io/ip 2>/dev/null || echo '?')"
   geo="$(curl -fsS --max-time 6 https://ipinfo.io/country 2>/dev/null || echo '?')"
-  echo "Внешний IP: $ip ($geo)"
+  if [[ "$ip" == "?" ]]; then
+    echo "Внешний IP: не узнать — интернет наружу не идёт (туннель поднялся, но не работает)"
+  else
+    echo "Внешний IP: $ip ($geo)"
+  fi
+}
+
+# launchctl kickstart работает ТОЛЬКО с загруженным демоном: после `vpn.sh off`
+# (bootout) он отвечает 'Could not find service ... in domain for system', а
+# скрипт раньше всё равно рапортовал успех. Поэтому одна точка входа.
+start_daemon() { # $1 — доп. флаг kickstart ('-k' для перезапуска, '' для старта)
+  if is_loaded; then sudo launchctl kickstart ${1:+"$1"} "system/$LABEL"
+  else
+    [[ -f "$PLIST" ]] || { echo "Нет $PLIST — сначала bash scripts/install-macos-daemon.sh"; return 1; }
+    sudo launchctl bootstrap system "$PLIST"
+  fi
+}
+
+# Рапорт «включено» без проверки уже дважды уводил диагностику в сторону:
+# сначала на маке молча не поднимался демон, а команда писала ✅.
+confirm_up() {
+  local i
+  for i in 1 2 3 4 5 6 7 8; do
+    pgrep -x sing-box >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  echo "❌ Демон не запустился. Последние строки лога:"
+  tail -n 6 /var/log/sing-box.err.log 2>/dev/null | sed 's/^/    /'
+  echo "   Проверь конфиг: sing-box check -c $CFG"
+  return 1
 }
 
 full_status() {
@@ -98,9 +127,10 @@ cmd="${1:-status}"; shift 2>/dev/null || true
 case "$cmd" in
   on|start)
     busy begin
-    if is_loaded; then sudo launchctl kickstart "system/$LABEL"; else sudo launchctl bootstrap system "$PLIST"; fi
+    start_daemon "" || { busy end; exit 1; }
     sudo launchctl enable "system/$LABEL" 2>/dev/null || true
-    sleep 1; reapply_killswitch; busy end
+    reapply_killswitch; busy end
+    confirm_up || exit 1
     echo "✅ VPN включён."; show_ip
     ;;
   off|stop)
@@ -112,8 +142,9 @@ case "$cmd" in
     ;;
   restart)
     busy begin
-    sudo launchctl kickstart -k "system/$LABEL"
-    sleep 1; reapply_killswitch; busy end
+    start_daemon -k || { busy end; exit 1; }
+    reapply_killswitch; busy end
+    confirm_up || exit 1
     echo "🔄 VPN перезапущен."; show_ip
     ;;
   status|diag|diagnose)
