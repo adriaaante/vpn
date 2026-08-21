@@ -79,10 +79,11 @@ def sh(cmd, timeout=10):
         return ""
 
 
-def run(args, timeout=90, no_share=False):
+def run(args, timeout=90, no_share=False, extra_env=None):
     env = dict(os.environ, STORE=STORE, CFG=CFG)
     if no_share:
         env["NO_SHARE"] = "1"
+    env.update(extra_env or {})
     try:
         p = subprocess.run(["bash", USERS_SH] + args, capture_output=True,
                            text=True, timeout=timeout, env=env)
@@ -127,6 +128,33 @@ def save_users(lst):
     data["users"] = lst
     with open(STORE, "w") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def pretty(name):
+    """Имя для показа: «owner» в таблице и памятке выглядит неопрятно. Меняется
+    только вид — в конфиге и правилах остаётся ровно то имя, что заведено."""
+    return name[:1].upper() + name[1:] if name else name
+
+
+def share_token(name):
+    """Персональный кусок ссылки. Раньше у всех был один адрес /full.json —
+    и «Auto update» одного человека мог скачать конфиг другого, попав на чужую
+    выдачу. Токен постоянный, поэтому ссылка у человека не меняется."""
+    lst = users()
+    hit = [u for u in lst if u["name"] == name]
+    if not hit:
+        return ""
+    tok = str(hit[0].get("share_token") or "")
+    if not tok:
+        tok = secrets.token_hex(5)
+        hit[0]["share_token"] = tok
+        save_users(lst)
+    return tok
+
+
+def share_url(name, host):
+    tok = share_token(name)
+    return f"http://{host}:8080/{tok}/full.json" if tok else f"http://{host}:8080/full.json"
 
 
 def find_user(name):
@@ -750,8 +778,8 @@ def guide_html(name):
     u = find_user(name) or {}
     st, dom = server_status(), domain_info()
     host = dom.get("host") or st["ip"]
-    url = f"http://{host}:8080/full.json"
-    nm = html.escape(name)
+    url = share_url(name, host)
+    nm = html.escape(pretty(name))
     deep = deep_link(url, name)
     pin = str(u.get("guide_pin") or "")
 
@@ -821,7 +849,7 @@ def guide_html(name):
 def share_modal(name, opened=True):
     st, dom = server_status(), domain_info()
     host = dom.get("host") or st["ip"]
-    url = f"http://{host}:8080/full.json"
+    url = share_url(name, host)
     nm = html.escape(name)
     q = urllib.parse.urlencode({"name": name})
     pin = str((find_user(name) or {}).get("guide_pin") or "")
@@ -840,9 +868,9 @@ def share_modal(name, opened=True):
                 f'Это защита от пересылки дальше по цепочке, а не от взлома.</div>')
     alt = "" if host == st["ip"] else (
         f'<div class="hint">Если по имени не откроется — запасная ссылка по адресу: '
-        f'<code>http://{html.escape(st["ip"])}:8080/full.json</code></div>')
+        f'<code>{html.escape(url.replace(host, st["ip"], 1))}</code></div>')
     return modal(
-        f"cfg-{nm}", f"Настройки для «{nm}»",
+        f"cfg-{nm}", f"Настройки для «{html.escape(pretty(name))}»",
         "Покажите код с экрана или отправьте памятку — в ней тот же код и те же шаги.",
         f'<div class="split"><div class="col qrcol">{qr_card(deep_link(url, name), 196, cap="Код открывает приложение", offer_install=True)}</div>'
         f'<div class="col"><ol class="steps">'
@@ -872,7 +900,8 @@ def page(msg="", err=False, extra_modal=""):
     for u in users():
         on = bool(u.get("enabled"))
         prot = bool(u.get("protected"))
-        nm = html.escape(u["name"])
+        nm = html.escape(u["name"])          # для форм: настоящее имя
+        shown = html.escape(pretty(u["name"]))   # для глаз: с заглавной
         note = f'<div class="note">{html.escape(u.get("note",""))}</div>' if u.get("note") else ""
         nlim = len(u.get("block_domains", [])) + len(u.get("block_tld", []))
         lim = (f'<span class="pill mut">закрыто: {nlim}</span>' if nlim
@@ -893,11 +922,11 @@ def page(msg="", err=False, extra_modal=""):
                     f'<button>Настройки</button></form>')
         if not prot:
             acts.append(
-                f'<form method="post" action="/act" onsubmit="return confirm(\'Удалить {nm}?\')">'
+                f'<form method="post" action="/act" onsubmit="return confirm(\'Удалить {shown}?\')">'
                 f'<input type="hidden" name="op" value="remove">'
                 f'<input type="hidden" name="name" value="{nm}">'
                 f'<button class="danger">Удалить</button></form>')
-        rows.append(f'<tr><td><div class="name">{nm}</div>{note}</td><td>{status}</td>'
+        rows.append(f'<tr><td><div class="name">{shown}</div>{note}</td><td>{status}</td>'
                     f'<td>{lim}</td><td><div class="row">{"".join(acts)}</div></td></tr>')
         modals.append(limits_modal(u))
 
@@ -1069,15 +1098,10 @@ class Handler(BaseHTTPRequestHandler):
                 err=not out.endswith("ok")))
         if op not in ("add", "enable", "disable", "remove"):
             return self._send(page("Неизвестное действие", err=True))
-        code, out = run([op, name], no_share=True)
+        pin = re.sub(r"\D", "", form.get("pin", [""])[0]) if op == "add" else ""
+        code, out = run([op, name], no_share=True,
+                        extra_env={"GUIDE_PIN": pin} if pin else None)
         if op == "add" and code == 0:
-            pin = re.sub(r"\D", "", form.get("pin", [""])[0])
-            if 4 <= len(pin) <= 8:
-                lst = users()
-                for x in lst:
-                    if x["name"] == name:
-                        x["guide_pin"] = pin
-                save_users(lst)
             start_share(name)
             return self._send(page(f"Готово: {name} добавлен", extra_modal=share_modal(name)))
         return self._send(page(out or "Готово", err=(code != 0)))

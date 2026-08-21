@@ -139,13 +139,33 @@ share() { # собрать и раздать конфиг конкретного
   # Снимаем зависшую прошлую раздачу ДО сборки: её trap делает rm -rf своего
   # каталога и иначе унёс бы уже готовые файлы (см. make-ios-configs-server.sh).
   if ss -tln 2>/dev/null | grep -q ":8080 "; then pkill -f "http.server 8080" 2>/dev/null && sleep 2; fi
-  out="/tmp/guest-$name"
-  rm -rf "$out"
+  # Ссылка у каждого своя. Раньше все получали http://host:8080/full.json —
+  # и ежечасное «Auto update» у одного человека могло скачать конфиг другого,
+  # если в этот момент шла его выдача. Токен постоянный (лежит в реестре),
+  # поэтому ссылка человека не меняется от выдачи к выдаче.
+  local tok root
+  tok="$(get_field "$name" share_token)"
+  if [[ -z "$tok" || "$tok" == "None" ]]; then
+    tok="$(python3 -c 'import secrets;print(secrets.token_hex(5))')"
+    NAME="$name" TOK="$tok" STORE="$STORE" python3 <<'PY'
+import json,os
+d=json.load(open(os.environ["STORE"]))
+for u in d["users"]:
+    if u["name"]==os.environ["NAME"]: u["share_token"]=os.environ["TOK"]
+json.dump(d,open(os.environ["STORE"],"w"),indent=2,ensure_ascii=False)
+PY
+  fi
+  root="/tmp/guest-$name"
+  out="$root/$tok"
+  rm -rf "$root"
   GUEST_UUID="$uuid" OUT_DIR="$out" SERVE=0 bash "$REPO/scripts/make-ios-configs-server.sh" >/dev/null || {
     echo "[!] Не удалось собрать конфиг"; exit 1; }
   # Гостю отдаём ТОЛЬКО умный режим: остальные два — способ случайно пустить весь
   # трафик (в том числе видео) через наш канал и запутаться в профилях.
   rm -f "$out/strict.json" "$out/selective.json"
+  # Пустой index.html: без него python -m http.server отдаёт по «/» листинг
+  # каталога, то есть показывает токен любому, кто заглянет на порт.
+  : > "$root/index.html"
   echo
   echo "============================================================"
   echo " Конфиг для «$name». Раздаю по HTTP — пусть импортирует как"
@@ -156,13 +176,13 @@ share() { # собрать и раздать конфиг конкретного
   linkhost="$(tr -d '[:space:]' < /etc/sing-box/server-host.txt 2>/dev/null || true)"
   [[ -n "$linkhost" ]] || linkhost="$(curl -fsSL --max-time 6 https://api.ipify.org 2>/dev/null)"
   echo "   умный (RU напрямую, зарубеж через VPN):"
-  echo "     http://$linkhost:8080/full.json"
+  echo "     http://$linkhost:8080/$tok/full.json"
   echo
   echo " Ctrl+C, как только импортирует: ссылка отдаёт его ключ без пароля."
   echo "============================================================"
   ufw allow 8080/tcp >/dev/null 2>&1 || true
-  trap 'ufw delete allow 8080/tcp >/dev/null 2>&1; rm -rf "$out"' EXIT INT TERM
-  cd "$out" && python3 -m http.server 8080
+  trap 'ufw delete allow 8080/tcp >/dev/null 2>&1; rm -rf "$root"' EXIT INT TERM
+  cd "$root" && python3 -m http.server 8080
 }
 
 case "$CMD" in
@@ -185,10 +205,16 @@ PY
       echo "Например:  sasha-tpk-sferiks"; exit 2; }
     [[ -n "$(get_field "$NAME" uuid)" ]] && { echo "Пользователь $NAME уже есть."; exit 1; }
     NEW_UUID="$(sing-box generate uuid 2>/dev/null || python3 -c 'import uuid;print(uuid.uuid4())')"
-    NAME="$NAME" NEW_UUID="$NEW_UUID" STORE="$STORE" python3 <<'PY'
+    NAME="$NAME" NEW_UUID="$NEW_UUID" STORE="$STORE" GUIDE_PIN="${GUIDE_PIN:-}" python3 <<'PY'
 import json,os
 d=json.load(open(os.environ["STORE"]))
-d["users"].append({"name":os.environ["NAME"],"uuid":os.environ["NEW_UUID"],"enabled":True,"note":""})
+u={"name":os.environ["NAME"],"uuid":os.environ["NEW_UUID"],"enabled":True,"note":""}
+# ПИН на памятку пишем ЗДЕСЬ, а не потом из панели: следом идёт apply с
+# перезапуском sing-box, а он рвёт ssh-туннель панели — дописать не успеть.
+pin="".join(c for c in os.environ.get("GUIDE_PIN","") if c.isdigit())
+if 4 <= len(pin) <= 8:
+    u["guide_pin"]=pin
+d["users"].append(u)
 json.dump(d,open(os.environ["STORE"],"w"),indent=2,ensure_ascii=False)
 print(f"[*] Добавлен {os.environ['NAME']}")
 PY

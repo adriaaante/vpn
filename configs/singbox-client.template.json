@@ -19,7 +19,10 @@
     {
       "type": "tun",
       "tag": "tun-in",
-      "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
+      "address": [
+        "172.19.0.1/30",
+        "fdfe:dcba:9876::1/126"
+      ],
       "auto_route": true,
       "strict_route": true,
       "stack": "system"
@@ -29,13 +32,32 @@
     {
       "type": "selector",
       "tag": "proxy",
-      "outbounds": ["auto", "vless-reality", "reality-cloudflare", "reality-google", "reality-mozilla", "reality-icloud", "reality-samsung", "reality-alt2053", "reality-alt8443"],
+      "outbounds": [
+        "auto",
+        "vless-reality",
+        "reality-cloudflare",
+        "reality-google",
+        "reality-mozilla",
+        "reality-icloud",
+        "reality-samsung",
+        "reality-alt2053",
+        "reality-alt8443"
+      ],
       "default": "auto"
     },
     {
       "type": "urltest",
       "tag": "auto",
-      "outbounds": ["vless-reality", "reality-cloudflare", "reality-google", "reality-mozilla", "reality-icloud", "reality-samsung", "reality-alt2053", "reality-alt8443"],
+      "outbounds": [
+        "vless-reality",
+        "reality-cloudflare",
+        "reality-google",
+        "reality-mozilla",
+        "reality-icloud",
+        "reality-samsung",
+        "reality-alt2053",
+        "reality-alt8443"
+      ],
       "url": "https://www.gstatic.com/generate_204",
       "interval": "2m",
       "tolerance": 50,
@@ -52,7 +74,10 @@
       "tls": {
         "enabled": true,
         "server_name": "www.apple.com",
-        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
         "reality": {
           "enabled": true,
           "public_key": "__REALITY_PUBLIC_KEY__",
@@ -70,7 +95,10 @@
       "tls": {
         "enabled": true,
         "server_name": "www.cloudflare.com",
-        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
         "reality": {
           "enabled": true,
           "public_key": "__REALITY_PUBLIC_KEY__",
@@ -88,7 +116,10 @@
       "tls": {
         "enabled": true,
         "server_name": "dl.google.com",
-        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
         "reality": {
           "enabled": true,
           "public_key": "__REALITY_PUBLIC_KEY__",
@@ -106,7 +137,10 @@
       "tls": {
         "enabled": true,
         "server_name": "addons.mozilla.org",
-        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
         "reality": {
           "enabled": true,
           "public_key": "__REALITY_PUBLIC_KEY__",
@@ -124,7 +158,10 @@
       "tls": {
         "enabled": true,
         "server_name": "www.icloud.com",
-        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
         "reality": {
           "enabled": true,
           "public_key": "__REALITY_PUBLIC_KEY__",
@@ -142,7 +179,10 @@
       "tls": {
         "enabled": true,
         "server_name": "www.samsung.com",
-        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
         "reality": {
           "enabled": true,
           "public_key": "__REALITY_PUBLIC_KEY__",
@@ -160,7 +200,10 @@
       "tls": {
         "enabled": true,
         "server_name": "www.apple.com",
-        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
         "reality": {
           "enabled": true,
           "public_key": "__REALITY_PUBLIC_KEY__",
@@ -178,7 +221,10 @@
       "tls": {
         "enabled": true,
         "server_name": "www.cloudflare.com",
-        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
         "reality": {
           "enabled": true,
           "public_key": "__REALITY_PUBLIC_KEY__",
@@ -194,25 +240,81 @@
   "route": {
     "default_domain_resolver": "dns-remote",
     "rules": [
-      { "action": "sniff" },
-      { "protocol": "dns", "action": "hijack-dns" },
-      { "ip_is_private": true, "outbound": "direct" },
       {
-        "domain_suffix": [".ru", ".рф", "mail.ru", "yandex.net", "vk.com", "vkontakte.ru", "sberbank.ru", "gosuslugi.ru"],
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "ip_is_private": true,
         "outbound": "direct"
       },
       {
-        "ip_cidr": ["91.108.4.0/22", "91.108.8.0/22", "91.108.12.0/22", "91.108.16.0/22", "91.108.20.0/22", "91.108.56.0/22", "95.161.64.0/20", "149.154.160.0/20", "185.76.151.0/24", "2001:b28:f23d::/48", "2001:b28:f23f::/48", "2001:67c:4e8::/48", "17.0.0.0/8"],
-        "outbound": "proxy"
+        "ip_cidr": [
+          "__SERVER_IP__/32"
+        ],
+        "outbound": "direct"
       },
-      { "rule_set": "geoip-ru", "outbound": "direct" },
       {
         "domain_suffix": [
-          "claude.ai", "anthropic.com", "claude.com",
-          "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com",
-          "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com", "ggpht.com",
-          "telegram.org", "t.me", "telegram.me", "telesco.pe",
-          "apple.com", "icloud.com", "cdn-apple.com", "aaplimg.com", "mzstatic.com"
+          ".ru",
+          ".рф",
+          "mail.ru",
+          "yandex.net",
+          "vk.com",
+          "vkontakte.ru",
+          "sberbank.ru",
+          "gosuslugi.ru"
+        ],
+        "outbound": "direct"
+      },
+      {
+        "ip_cidr": [
+          "91.108.4.0/22",
+          "91.108.8.0/22",
+          "91.108.12.0/22",
+          "91.108.16.0/22",
+          "91.108.20.0/22",
+          "91.108.56.0/22",
+          "95.161.64.0/20",
+          "149.154.160.0/20",
+          "185.76.151.0/24",
+          "2001:b28:f23d::/48",
+          "2001:b28:f23f::/48",
+          "2001:67c:4e8::/48",
+          "17.0.0.0/8"
+        ],
+        "outbound": "proxy"
+      },
+      {
+        "rule_set": "geoip-ru",
+        "outbound": "direct"
+      },
+      {
+        "domain_suffix": [
+          "claude.ai",
+          "anthropic.com",
+          "claude.com",
+          "openai.com",
+          "chatgpt.com",
+          "oaistatic.com",
+          "oaiusercontent.com",
+          "youtube.com",
+          "youtu.be",
+          "googlevideo.com",
+          "ytimg.com",
+          "ggpht.com",
+          "telegram.org",
+          "t.me",
+          "telegram.me",
+          "telesco.pe",
+          "apple.com",
+          "icloud.com",
+          "cdn-apple.com",
+          "aaplimg.com",
+          "mzstatic.com"
         ],
         "outbound": "proxy"
       }
