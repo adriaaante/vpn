@@ -911,13 +911,75 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(page(out or "Готово", err=(code != 0)))
 
 
+def _is_panel(pid):
+    """Это точно ДРУГОЙ экземпляр панели, а не что-то, где её имя просто
+    упомянуто в аргументах.
+
+    Ровно на этом ловились дважды: строка `... python3 scripts/vpn-panel.py`
+    попадает в аргументы породившей оболочки (у нас — `bash -c` от sshd), и
+    наивный поиск по `ps` убивал собственного родителя вместе с SSH-сессией.
+    Поэтому смотрим не «есть ли подстрока», а первые два аргумента процесса:
+    у настоящей панели это интерпретатор и путь к самому скрипту, у оболочки —
+    `bash` и `-c`.
+    """
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            argv = [x.decode("utf-8", "replace") for x in f.read().split(b"\0") if x]
+    except OSError:
+        return False
+    return (len(argv) >= 2 and "python" in os.path.basename(argv[0])
+            and argv[1].endswith("vpn-panel.py"))
+
+
+def take_over_port():
+    """Забрать порт у прежнего экземпляра панели.
+
+    Обрыв SSH не всегда доходит до серверного процесса (sshd не шлёт HUP, если
+    связь просто пропала) — старая панель остаётся жить и держит порт, а новая
+    падает с `Address already in use`, и лаунчер уходит в бесконечный
+    переподключай-упади. Поэтому гасим прежний экземпляр сами. Ищем по /proc,
+    а не по pid-файлу: панель от прежней версии его не писала.
+    """
+    if not os.path.isdir("/proc"):
+        return
+    skip = {os.getpid(), os.getppid()}
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit() or int(entry) in skip or not _is_panel(int(entry)):
+            continue
+        pid = int(entry)
+        print(f"[*] Прежняя панель (pid {pid}) держит порт — останавливаю.")
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                break
+            for _ in range(12):
+                time.sleep(0.25)
+                try:
+                    os.kill(pid, 0)
+                except OSError:
+                    break
+            else:
+                continue
+            break
+
+
+def bye(*_):
+    stop_share()
+    print("\nОстановлено.")
+    raise SystemExit(0)
+
+
 if __name__ == "__main__":
+    take_over_port()
+    # Туннель рвётся — панель должна уйти сама, а не остаться сиротой с портом.
+    for _sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(_sig, bye)
     srv = HTTPServer(("127.0.0.1", PORT), Handler)
     print(f"Панель: http://127.0.0.1:{PORT}/")
     print(f"PIN: {PIN}   (хранится в {PINFILE})")
     print("Снаружи недоступна. С мака: bash scripts/vpn-panel.sh")
     try:
         srv.serve_forever()
-    except KeyboardInterrupt:
-        stop_share()
-        print("\nОстановлено.")
+    except SystemExit:
+        pass

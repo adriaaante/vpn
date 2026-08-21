@@ -28,12 +28,23 @@ REMOTE="cd /root/vpn && git fetch -q origin && git checkout \$(git branch -r | g
 # простою — тогда панель просто пропадала. Держим keepalive и переподключаемся,
 # пока не нажат Ctrl+C. Токен не меняется, поэтому вкладку перезагружать не надо.
 STOP=0
+FAILS=0
 trap 'STOP=1' INT
 while [[ $STOP -eq 0 ]]; do
+  started=$(date +%s)
   ssh -t -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes \
       -L "$PORT:127.0.0.1:$PORT" "$SRV" "$REMOTE"
   rc=$?
   [[ $STOP -eq 1 ]] && break
+  # Сессия, умершая мгновенно, — это ошибка на сервере, а не обрыв связи.
+  # Раньше цикл гонял её бесконечно и заваливал экран одинаковыми трейсбеками.
+  if (( $(date +%s) - started < 10 )); then FAILS=$((FAILS + 1)); else FAILS=0; fi
+  if (( FAILS >= 3 )); then
+    echo
+    echo "[!] Панель падает сразу после запуска — три раза подряд. Дальше не пробую."
+    echo "    Причина в последних строках выше: это ошибка на сервере, переподключение её не лечит."
+    break
+  fi
   echo "[!] Соединение оборвалось (код $rc). Переподключаюсь через 3 с — Ctrl+C, чтобы выйти."
   sleep 3
 done
