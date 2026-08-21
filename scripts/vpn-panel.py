@@ -320,16 +320,21 @@ def modal(mid, title, sub, body, wide=False):
 
 
 def login_page(err=""):
+    """Вход по PIN. Форма отправляется сама, как только набрана последняя цифра —
+    длина берётся от настоящего PIN, поэтому кнопка нужна лишь как запасной путь."""
     warn = f'<div class="msg err">{html.escape(err)}</div>' if err else ""
+    n = len(PIN)
     return (f'<!doctype html><html lang="ru"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>Вход</title><style>{CSS}</style></head><body><div class="login">'
             f'{logo_html()}{warn}'
-            f'<form method="post" action="/login">'
-            f'<input name="pin" type="password" inputmode="numeric" autocomplete="off" '
-            f'autofocus placeholder="PIN" required>'
+            f'<form method="post" action="/login" id="f">'
+            f'<input name="pin" id="p" type="password" inputmode="numeric" autocomplete="off" '
+            f'maxlength="{n}" autofocus placeholder="PIN" required>'
             f'<div style="margin-top:14px"><button class="primary" style="width:100%">Войти</button></div>'
             f'</form><div class="hint">PIN печатается в терминале при запуске панели.</div>'
+            f'<script>var p=document.getElementById("p");p.addEventListener("input",function(){{'
+            f'if(p.value.length>={n})document.getElementById("f").submit()}});</script>'
             f'</div></body></html>')
 
 
