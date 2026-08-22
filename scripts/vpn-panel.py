@@ -840,7 +840,28 @@ background:transparent;border:0;padding:0;margin:0 0 11px;color:var(--fg);font:i
 .nodebtn .chev{font-size:11px;color:var(--accent);white-space:nowrap}
 .qrslot{display:none}
 .qrslot svg{display:block;width:200px;max-width:100%;height:auto;background:#fff;
-padding:10px;border-radius:12px;margin:0 auto 11px}
+padding:10px;border-radius:12px;margin:0 auto}
+/* Раскрывашка «Не получается…»: нативный details — работает и после innerHTML. */
+details.fold{margin:10px 0 0}
+details.fold summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;
+gap:7px;color:var(--accent);font-size:13.5px;padding:6px 0;-webkit-tap-highlight-color:transparent}
+details.fold summary::-webkit-details-marker{display:none}
+details.fold summary:before{content:"▸";font-size:11px;transition:transform .15s}
+details.fold[open] summary:before{transform:rotate(90deg)}
+.fbody{background:var(--card2);border:1px solid var(--line);border-radius:12px;
+padding:14px 16px;margin-top:8px;font-size:13.5px;color:var(--dim);line-height:1.55}
+.fbody p{margin:0 0 10px}
+.fbody .link{margin:6px 0 0}
+.openbtn{display:inline-block;background:var(--accent);color:#fff;font-weight:600;
+font-size:14px;padding:11px 18px;border-radius:11px;text-decoration:none;margin:2px 0 12px}
+.openbtn:hover{text-decoration:none;filter:brightness(1.1)}
+.lrow{margin:14px 0 0}
+.lrow .lhead{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.lrow .lname{font-weight:600;font-size:13px;color:var(--fg)}
+.lrow button{font:inherit;font-size:12px;background:var(--card);border:1px solid var(--line);
+color:var(--fg);border-radius:8px;padding:4px 11px;cursor:pointer}
+.lrow button:active{background:var(--bg)}
+.hintline{color:var(--dim);font-size:12.5px;margin-top:12px;line-height:1.55}
 
 /* Кнопки «сохранить в PDF» в памятке нет намеренно, но напечатать страницу
    браузер даёт всегда — пусть это хотя бы выглядит прилично и не жрёт тонер. */
@@ -923,8 +944,22 @@ function srqr(btn){
     slot.innerHTML=q.createSvgTag({cellSize:4,margin:2,scalable:true});
     slot.setAttribute('data-done','1'); slot.style.display='block';
     if(chev)chev.textContent='Скрыть QR';
-  }catch(e){ slot.textContent='Не удалось построить QR — используйте ссылку ниже.';
+  }catch(e){ slot.textContent='Не удалось построить QR — раскройте «Не получается отсканировать?» ниже.';
     slot.style.display='block'; }
+}
+function cplink(b){
+  var t=b.closest('.lrow').querySelector('.link').textContent.trim();
+  function done(){var o=b.textContent;b.textContent='Скопировано ✓';
+    setTimeout(function(){b.textContent=o},1600);}
+  function legacy(){var ta=document.createElement('textarea');ta.value=t;
+    ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);
+    ta.focus();ta.select();
+    try{document.execCommand('copy');done()}catch(e){}
+    document.body.removeChild(ta);}
+  // по http:// (не localhost) navigator.clipboard недоступен — как и crypto.subtle
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(done,legacy);
+  }else legacy();
 }
 function srInit(){
   var opened=document.querySelectorAll('.nodebtn[data-open]');
@@ -1142,6 +1177,9 @@ def guide_html(name):
     pin = str(u.get("guide_pin") or "")
 
     # --- вкладка sing-box (рекомендуемая): remote-профиль с авто-failover ---
+    # Вспомогательные ветки («нет в РФ сторе», «не сканируется») спрятаны в
+    # <details>: главный путь — три шага, глазам чисто. details — нативный HTML,
+    # работает и внутри блока, вставленного через innerHTML после ПИНа.
     sb_panel = f"""<h2>Приложение sing-box</h2>
     <div class="note ok">Рекомендуем: приложение само переключается на запасной узел,
     если основной заблокируют, и умеет kill-switch — не пускает трафик мимо туннеля.</div>
@@ -1150,25 +1188,30 @@ def guide_html(name):
       <div class="col">
         <ol class="steps">
           <li><b>Установите приложение sing-box VT</b>
-            <div class="sub">iPhone, iPad и Mac — App Store, разработчик VIRAL TECH INC.:
-            <a href="{APP_URL_SB}">{APP_URL_SB}</a>. Бесплатное. Пока его нет, код
-            сканировать нечем.</div>
-            <div class="sub">Нет в российском App Store — смените страну аккаунта:
-            Настройки → ваше имя → Медиа и покупки → Просмотреть → Страна или регион.
-            Подойдёт любая; карта для бесплатного приложения не нужна.</div></li>
+            <div class="sub">App Store, бесплатное (разработчик VIRAL TECH INC.):
+            <a href="{APP_URL_SB}">{APP_URL_SB}</a></div>
+            <details class="fold"><summary>Нет в российском App Store?</summary>
+              <div class="fbody">Смените страну аккаунта: Настройки → ваше имя →
+              Медиа и покупки → Просмотреть → Страна или регион. Подойдёт любая;
+              карта для бесплатного приложения не нужна — способ оплаты «Нет».
+              </div></details></li>
           <li><b>Наведите камеру на код</b>
             <div class="sub">Телефон предложит открыть в sing-box — согласитесь.
             В приложении нажмите <b>Import</b>, затем <b>Create</b>. Галочку
-            <i>Auto update</i> и интервал <i>60</i> оставьте как есть.</div></li>
-          <li><b>Не предложил открыть приложение — добавьте вручную</b>
-            <div class="sub">Вкладка Profiles → «+» → Type: <i>Remote</i> →
-            вставьте адрес в поле URL → Create.</div>
-            <div class="link">{html.escape(url)}</div></li>
+            <i>Auto update</i> оставьте как есть.</div></li>
           <li><b>Включите переключатель на вкладке Dashboard</b>
             <div class="sub">Первый раз система попросит разрешение на VPN-профиль —
-            согласитесь. Дальше всё одной кнопкой. Проверка на <code>ipinfo.io</code>:
-            страна должна быть Латвия (LV).</div></li>
+            согласитесь. Проверка на <code>ipinfo.io</code>: страна Латвия (LV).</div></li>
         </ol>
+        <details class="fold"><summary>Не получается отсканировать код?</summary>
+          <div class="fbody">
+            <p>Если эта страница открыта на самом телефоне — сканировать и не нужно,
+            просто нажмите кнопку:</p>
+            <a class="openbtn" href="{html.escape(deep)}">Открыть в sing-box</a>
+            <p>Или добавьте вручную: вкладка Profiles → «+» → Type: <i>Remote</i> →
+            вставьте адрес в поле URL → Create.</p>
+            <div class="link">{html.escape(url)}</div>
+          </div></details>
       </div>
     </div>"""
 
@@ -1187,31 +1230,57 @@ def guide_html(name):
 
         has_qr = qr_lib_ok()
 
+        def sr_link(sni):
+            return vless_link(uuid, host, sni, f"LV-{decoy_label(sni)}", rp)
+
         def node(sni, live):
-            link = vless_link(uuid, host, sni, f"LV-{decoy_label(sni)}", rp)
-            esc = html.escape(link)
+            esc = html.escape(sr_link(sni))
             badge = '<span class="badge">активен сейчас</span>' if live else ""
             title = f'<span class="nn">Латвия · {html.escape(decoy_label(sni))}</span>{badge}'
-            if has_qr:
-                # data-open=1 у активного: srInit раскроет его QR сразу при показе.
-                openattr = ' data-open="1"' if live else ""
-                head = (f'<button type="button" class="nh nodebtn" data-vless="{esc}"{openattr} '
-                        f'onclick="srqr(this)">{title}'
-                        f'<span class="chev">Показать QR</span></button><div class="qrslot"></div>')
-            else:
-                head = f'<div class="nh">{title}</div>'
-            return (f'<div class="node{" live" if live else ""}">{head}'
-                    f'<div class="link">{esc}</div></div>')
+            if not has_qr:
+                # Библиотека не доехала: без QR карточка-кнопка была бы мёртвой,
+                # отдаём узел просто ссылкой.
+                return (f'<div class="node{" live" if live else ""}">'
+                        f'<div class="nh">{title}</div><div class="link">{esc}</div></div>')
+            # data-open=1 у активного: srInit раскроет его QR сразу при показе.
+            openattr = ' data-open="1"' if live else ""
+            return (f'<div class="node{" live" if live else ""}">'
+                    f'<button type="button" class="nh nodebtn" data-vless="{esc}"{openattr} '
+                    f'onclick="srqr(this)">{title}'
+                    f'<span class="chev">Показать QR</span></button>'
+                    f'<div class="qrslot"></div></div>')
 
         active = domains[0]
         rest = domains[1:]
         nodes_html = node(active, active == cur)
         if rest:
             nodes_html += ('<div class="sect-note">Запасные узлы — если основной '
-                           'перестанет открываться. Нажмите на узел, чтобы открыть его '
-                           'QR (или скопируйте ссылку → в Shadowrocket «+» → Add from '
-                           'clipboard):</div>'
+                           'перестанет открываться. Нажмите на узел, чтобы открыть '
+                           'его QR:</div>'
                            + "".join(node(d, False) for d in rest))
+        # Ссылки узлов с глаз убраны в раскрывашку: главный путь — QR, а копирование
+        # руками нужно только когда сканировать нечем (страница на том же телефоне).
+        if has_qr:
+            rows = "".join(
+                f'<div class="lrow"><div class="lhead">'
+                f'<span class="lname">Латвия · {html.escape(decoy_label(d))}</span>'
+                f'<button type="button" onclick="cplink(this)">Скопировать</button></div>'
+                f'<div class="link">{html.escape(sr_link(d))}</div></div>'
+                for d in domains)
+            nodes_html += (
+                '<details class="fold"><summary>Не получается отсканировать?</summary>'
+                '<div class="fbody">'
+                '<p>Скопируйте ссылку нужного узла кнопкой ниже и просто откройте '
+                'Shadowrocket — он сам предложит добавить её из буфера.</p>'
+                '<p>Экран «Добавить сервер» с типом <i>Subscribe</i> не подходит — '
+                'наш код туда не добавляется. Нужен сканер с вкладки «Главная» '
+                'или буфер обмена.</p>'
+                f'{rows}</div></details>')
+        else:
+            nodes_html += ('<div class="hintline">Скопируйте ссылку узла (нажать и '
+                           'подержать → Скопировать) и откройте Shadowrocket — он сам '
+                           'предложит добавить её из буфера. Экран «Добавить сервер» с '
+                           'типом Subscribe не подходит.</div>')
     else:
         nodes_html = ('<div class="note warn">Ссылки для Shadowrocket сейчас собрать не '
                       'удалось — воспользуйтесь вариантом sing-box слева.</div>')
@@ -1221,22 +1290,15 @@ def guide_html(name):
     выберите вручную другой узел (лучше тот, что помечен «активен сейчас»).</div>
     <ol class="steps">
       <li><b>Установите Shadowrocket</b>
-        <div class="sub">App Store: <a href="{APP_URL_SR}">{APP_URL_SR}</a>. Платное
-        (~$3), есть в российском App Store.</div></li>
+        <div class="sub">App Store, платное (~$3), доступно в российском:
+        <a href="{APP_URL_SR}">{APP_URL_SR}</a></div></li>
       <li><b>Отсканируйте QR активного узла</b>
-        <div class="sub">Откройте вкладку <b>Главная</b> и нажмите значок
-        <b>сканера</b> вверху справа → наведите на QR ниже (у активного узла он уже
-        раскрыт). Не сканируется — нажмите и подержите на ссылке под QR →
-        «Скопировать», Shadowrocket подхватит её из буфера сам.</div>
-        <div class="sub">Важно: тип узла оставьте как есть. Экран «Добавить сервер» с
-        типом <i>Subscribe</i> — это НЕ то: наш QR туда не добавляется. Нужен именно
-        сканер с вкладки «Главная».</div></li>
-      <li><b>Добавьте и запасные узлы</b>
-        <div class="sub">Если основной перестанет открываться — переключитесь на
-        другой. Нажмите на узел в списке ниже, чтобы открыть его QR.</div></li>
+        <div class="sub">В приложении: вкладка <b>Главная</b> → значок <b>сканера</b>
+        вверху справа → наведите на QR ниже (у активного узла он уже раскрыт).</div></li>
       <li><b>Включите переключатель вверху</b>
-        <div class="sub">Затем Settings → <b>Global Routing → Proxy</b>, чтобы весь
-        трафик шёл через VPN. Проверка на <code>ipinfo.io</code>: страна Латвия (LV).</div></li>
+        <div class="sub">Затем на главном экране <b>Global Routing → Proxy</b>, чтобы
+        весь трафик шёл через VPN. Проверка на <code>ipinfo.io</code>: страна
+        Латвия (LV).</div></li>
     </ol>
     <h2>Узлы — добавьте активный, остальные про запас</h2>
     {nodes_html}"""
