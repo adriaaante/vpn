@@ -24,6 +24,7 @@ import secrets
 import shutil
 import signal
 import subprocess
+import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -1489,14 +1490,20 @@ def share_dir(name):
     return f"/tmp/guest-{name}/{share_token(name)}"
 
 
-def publish_guide(name, tries=25):
+def publish_guide(name, wait=60.0):
     """Положить памятку рядом с конфигом — чтобы человеку можно было послать
     ССЫЛКУ, а не файл. Вложение в мессенджере открывается встроенным
     просмотром, где скрипты не выполняются: цифры кода не нажимаются, и
     приходится сохранять файл и открывать его браузером вручную.
-    По ссылке всё работает сразу."""
+    По ссылке всё работает сразу.
+
+    Ждём до `wait` секунд, а не 5, как раньше: сборка конфигов идёт дольше —
+    там и снятие прежней раздачи со `sleep 2`, и `curl` к ipify с таймаутом 6 с.
+    Не дождались — index.html не появлялся, и гость по ссылке видел ЛИСТИНГ
+    КАТАЛОГА вместо памятки (ровно этот симптом и словили)."""
     d = share_dir(name)
-    for _ in range(tries):
+    deadline = time.time() + wait
+    while time.time() < deadline:
         # Ждём не каталог, а готовый конфиг: раздача сначала СНОСИТ прежний
         # каталог и только потом собирает файлы — попасть в это окно значит
         # положить памятку в то, что через миг удалят.
@@ -1507,12 +1514,23 @@ def publish_guide(name, tries=25):
                 return True
             except OSError:
                 return False
-        time.sleep(0.2)
+        time.sleep(0.3)
     return False
+
+
+def publish_guide_async(name, wait=60.0):
+    """Памятку кладём ФОНОМ: держать HTTP-ответ панели все секунды сборки нельзя —
+    страница выглядела бы зависшей, а раньше именно из-за спешки мы не дожидались
+    конфига и оставляли каталог без index.html."""
+    threading.Thread(target=publish_guide, args=(name, wait), daemon=True).start()
 
 
 def start_share(name):
     stop_share()
+    # Закрепляем токен ДО запуска скрипта. Иначе гонка: скрипт, не найдя токена,
+    # сгенерирует свой и создаст каталог с ним, а панель параллельно сгенерирует
+    # другой и положит памятку мимо — по ссылке остался бы листинг каталога.
+    share_token(name)
     env = dict(os.environ, STORE=STORE, CFG=CFG)
     share_proc["proc"] = subprocess.Popen(
         ["bash", USERS_SH, "share", name], env=env,
@@ -1578,7 +1596,7 @@ class Handler(BaseHTTPRequestHandler):
             if not find_user(name):
                 return self._send(page("Нет такого человека", err=True))
             start_share(name)
-            publish_guide(name)
+            publish_guide_async(name)
             return self._send(page(extra_modal=share_modal(name)))
         return self._send(page())
 
@@ -1622,7 +1640,7 @@ class Handler(BaseHTTPRequestHandler):
             # Памятка уже лежит в раздаче — пересобираем, иначе там остался бы
             # старый код (или его отсутствие).
             if share_proc.get("name") == name:
-                publish_guide(name, tries=3)
+                publish_guide_async(name, wait=15)
             return self._send(page(f"Код на памятку {'сохранён' if pin else 'снят'}: {name}",
                                    extra_modal=share_modal(name)))
 
@@ -1667,7 +1685,7 @@ class Handler(BaseHTTPRequestHandler):
                         extra_env={"GUIDE_PIN": pin} if pin else None)
         if op == "add" and code == 0:
             start_share(name)
-            publish_guide(name)
+            publish_guide_async(name)
             return self._send(page(f"Готово: {name} добавлен", extra_modal=share_modal(name)))
         return self._send(page(out or "Готово", err=(code != 0)))
 

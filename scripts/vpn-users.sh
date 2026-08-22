@@ -166,6 +166,28 @@ PY
   # Пустой index.html: без него python -m http.server отдаёт по «/» листинг
   # каталога, то есть показывает токен любому, кто заглянет на порт.
   : > "$root/index.html"
+  # Заглушка в каталоге человека. Настоящую памятку панель кладёт сюда фоном
+  # через несколько секунд, но открыть ссылку могут и раньше — и тогда вместо
+  # памятки показывался ЛИСТИНГ КАТАЛОГА (ловили именно это). Страница
+  # обновляется сама, поэтому памятка появится без участия человека.
+  cat > "$out/index.html" <<'PLACEHOLDER'
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="3">
+<title>FutureFlow — доступ к VPN</title><style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:#0c0e12;color:#eef1f7;font:15px/1.55 -apple-system,BlinkMacSystemFont,
+'SF Pro Text','Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.box{text-align:center;padding:28px}
+h1{font-size:19px;font-weight:640;margin:0 0 8px}
+p{color:#9aa4b8;font-size:13.5px;margin:0}
+.sp{width:26px;height:26px;margin:0 auto 18px;border-radius:50%;
+border:2px solid #262c39;border-top-color:#5b8dff;animation:r .8s linear infinite}
+@keyframes r{to{transform:rotate(360deg)}}
+</style></head><body><div class="box"><div class="sp"></div>
+<h1>Готовим памятку…</h1><p>Страница обновится сама через пару секунд.</p>
+</div></body></html>
+PLACEHOLDER
   echo
   echo "============================================================"
   echo " Конфиг для «$name». Раздаю по HTTP — пусть импортирует как"
