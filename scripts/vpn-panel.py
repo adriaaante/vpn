@@ -702,11 +702,6 @@ def add_modal():
         '<button class="primary">Создать и показать настройки</button></div></form>')
 
 
-def zone_words(tlds):
-    names = dict(ZONES)
-    return [names.get(t, t.lstrip(".").upper()) for t in tlds]
-
-
 def qr_card(url, size=228, cap="Наведите камеру телефона на код", offer_install=False):
     """QR вместе с логотипом: тёмная фирменная карточка, внутри белая плитка кода.
     Логотип рядом, а не поверх кода — так он не съедает модули и код читается
@@ -855,7 +850,7 @@ padding:10px;border-radius:12px;margin:0 auto 11px}
  .card,.link,code{background:#f4f5f8;border-color:#dfe3ea;color:#111}
  .qrcard{background:#f4f5f8;border-color:#dfe3ea}
  .steps li:before{background:#eef0f4;border-color:#dfe3ea;color:#555}
- .lead,.dim,.qrcap,ul.plain,.foot,.steps .sub,.opt .t span{color:#555}
+ .lead,.qrcap,ul.plain,.foot,.steps .sub,.opt .t span{color:#555}
  svg.logo path,svg.logo rect{fill:#111}
  h1{border-color:#dfe3ea}
  header{border-color:#dfe3ea}
@@ -942,9 +937,16 @@ document.addEventListener('DOMContentLoaded',function(){
 """
 
 
+def qr_lib_ok():
+    """Доехала ли вендоренная QR-библиотека. Без неё кнопку «Показать QR» рисовать
+    НЕЛЬЗЯ: она бы висела мёртвой (srqr is not defined), и гость решил бы, что
+    памятка сломана, вместо того чтобы скопировать ссылку."""
+    return bool(_read(QR_LIB_FILE))
+
+
 def guide_scripts():
     """QR-библиотека + обработчики для узлов Shadowrocket, инлайном в <head>.
-    Пусто, если вендоренной библиотеки нет (тогда останется ссылка узла текстом)."""
+    Пусто, если вендоренной библиотеки нет (тогда узлы отдаются просто ссылками)."""
     lib = _read(QR_LIB_FILE)
     if not lib:
         return ""
@@ -1183,17 +1185,22 @@ def guide_html(name):
         # серверных QR раздули бы файл до мегабайтов и под ПИНом тормозили расшифровку.
         domains.sort(key=lambda d: d != cur)
 
+        has_qr = qr_lib_ok()
+
         def node(sni, live):
             link = vless_link(uuid, host, sni, f"LV-{decoy_label(sni)}", rp)
             esc = html.escape(link)
             badge = '<span class="badge">активен сейчас</span>' if live else ""
-            # data-open=1 у активного: srInit раскроет его QR сразу при показе.
-            openattr = ' data-open="1"' if live else ""
-            return (f'<div class="node{" live" if live else ""}">'
-                    f'<button type="button" class="nh nodebtn" data-vless="{esc}"{openattr} onclick="srqr(this)">'
-                    f'<span class="nn">Латвия · {html.escape(decoy_label(sni))}</span>{badge}'
-                    f'<span class="chev">Показать QR</span></button>'
-                    f'<div class="qrslot"></div>'
+            title = f'<span class="nn">Латвия · {html.escape(decoy_label(sni))}</span>{badge}'
+            if has_qr:
+                # data-open=1 у активного: srInit раскроет его QR сразу при показе.
+                openattr = ' data-open="1"' if live else ""
+                head = (f'<button type="button" class="nh nodebtn" data-vless="{esc}"{openattr} '
+                        f'onclick="srqr(this)">{title}'
+                        f'<span class="chev">Показать QR</span></button><div class="qrslot"></div>')
+            else:
+                head = f'<div class="nh">{title}</div>'
+            return (f'<div class="node{" live" if live else ""}">{head}'
                     f'<div class="link">{esc}</div></div>')
 
         active = domains[0]
@@ -1411,6 +1418,7 @@ def page(msg="", err=False, extra_modal="", open_nodes=False):
 <span><b>домен</b> {dline}</span>
 </div></div>
 {add_modal()}{analytics_modal()}{nodes_modal(open_nodes)}{links_modal()}{server_modal()}{''.join(modals)}{extra_modal}
+</div>
 <script>{JS}</script></body></html>"""
 
 
