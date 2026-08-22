@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # server-share-qr.sh — печатает vless:// ссылку + QR на основе ТЕКУЩЕГО серверного
-# конфига (для импорта в sing-box VT на айфоне без ввода ключей руками).
+# конфига (для импорта в sing-box VT / Shadowrocket / Happ на айфоне без ввода
+# ключей руками). SNI в ссылке — тот, что реально стоит на сервере сейчас.
 # Запуск на сервере: cd /root/vpn && git pull origin main && bash scripts/server-share-qr.sh
 
 set -uo pipefail
@@ -27,7 +28,8 @@ echo
 echo "$LINK"
 echo
 echo "============================================================"
-echo " QR — отсканируй камерой айфона или в sing-box VT 'Import QR':"
+echo " QR — отсканируй в приложении (Shadowrocket: значок сканера слева вверху;"
+echo " sing-box VT: Import QR):"
 echo
 if ! command -v qrencode >/dev/null 2>&1; then
   apt-get update -qq >/dev/null 2>&1 || true

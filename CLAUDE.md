@@ -144,6 +144,27 @@ microsoft → FAIL ⇒ дело в домене, а не в ключах/вер�
 selective = reject-catch-all, full/strict = всё зарубежное в туннель ⇒ рос. IP не
 утекает зарубежным сервисам нигде.
 
+## Альтернативный iOS-клиент: Shadowrocket (RU App Store)
+
+Сервер — стандартный VLESS+Reality, поэтому кроме sing-box VT работает любой
+Xray-совместимый клиент. На айфоне куплен **Shadowrocket** (Shadow Launch
+Technology Limited, id932747118) — один из немногих клиентов, не удалённых из
+российского App Store (март 2026: Streisand/V2Box/V2RayTun/Happ выпилены по
+требованию РКН; «Foxray VPN» в RU-сторе — подделка с подпиской, не ставить).
+
+- Импорт: `scripts/share-link.sh` на маке печатает vless://-ссылку+QR на КАЖДЫЙ
+  decoy (LV-apple/…-cloudflare/…-google/…-mozilla) — добавить в Shadowrocket все
+  четыре. `scripts/server-share-qr.sh` на сервере — одну ссылку с ТЕКУЩИМ SNI.
+- urltest-автопереключения decoy в Shadowrocket нет: если сервер сменил decoy
+  (decoy-monitor), вручную выбрать профиль с совпадающим SNI. Текущий SNI —
+  `scripts/server-status.sh`.
+- UUID общий с маком — параллельная работа Mac(sing-box)+iPhone(Shadowrocket)
+  нормальна. sing-box VT и Shadowrocket могут стоять на айфоне одновременно
+  (iOS сам гасит один VPN при включении другого).
+- Режимы strict/full/selective из наших sing-box конфигов в Shadowrocket не
+  переносятся автоматически — там своя маршрутизация (Глобальный роутинг:
+  Прокси = всё в туннель; Сцена/Config — для правил типа «RU напрямую»).
+
 ## Полезные факты окружения
 - VPS: EDIS Global, `192.36.41.201`, Латвия, 1 GB RAM (легко перегрузить — не
   гонять по нескольку sing-box разом). Панель: power/VNC/Reinstall, Support PIN.
