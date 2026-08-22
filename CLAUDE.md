@@ -225,11 +225,13 @@ in domain for system` и всё равно писал «🔄 перезапущ�
   инбаундах сразу, иначе порты разъедутся по доменам и половина клиентов умрёт.
 - Тег первого outbound оставлен `vless-reality` (apple) для совместимости с меню/`vpn-proto.sh`.
 - Список decoy (сейчас 6: apple/cloudflare/dl.google/addons.mozilla/icloud/samsung)
-  продублирован в 6 местах и должен совпадать, иначе сервер уедет на домен, которого
+  продублирован в 8 местах и должен совпадать, иначе сервер уедет на домен, которого
   нет у клиента, и упадёт всё сразу: `configs/singbox-client.template.json`,
-  `scripts/decoy-monitor.sh`, `scripts/make-ios-configs-server.sh`,
-  `scripts/fix-reality-sni.sh`, `scripts/reality-env-check.sh`, `scripts/vpn-doctor.sh`
-  (+ ярлыки в `menubar/vpn.30s.sh` и `scripts/vpn-watch.sh`).
+  `scripts/decoy-monitor.sh`, `scripts/decoy-status.sh`, `scripts/make-ios-configs-server.sh`,
+  `scripts/fix-reality-sni.sh`, `scripts/reality-env-check.sh`, `scripts/vpn-doctor.sh`,
+  `scripts/vpn-panel.py` (+ ярлыки в `menubar/vpn.30s.sh` и `scripts/vpn-watch.sh`).
+  Сверка одной командой: `grep -rln www.samsung.com --include='*.sh' --include='*.py'
+  --include='*.json' .`
 
 Проверка здоровья сервера: `scripts/server-status.sh` (sing-box, decoy по петле,
 таймер монитора, порт 443, SSH).
@@ -420,6 +422,23 @@ PDF», под печать включается светлая тема (`@media
 защита прежняя — персональный ключ, отзыв одной кнопкой и короткое окно выдачи.
 Кнопки «Сохранить в PDF» в памятке нет намеренно (просьба владельца), но это
 косметика: печать и «сохранить страницу» браузер даёт всегда.
+
+**Окно «Узлы» в панели** (`nodes_modal`) — какой decoy доступен, а какой нет.
+Нужно из-за Shadowrocket: там узлы переключаются РУКАМИ, поэтому владельцу надо
+видеть, какой сейчас рабочий (в sing-box вопрос не стоит — urltest перебирает сам).
+Срез считает `scripts/decoy-status.sh` и кладёт в `/etc/sing-box/decoy-status.json`;
+панель только читает файл и кнопкой «Проверить сейчас» запускает скрипт ФОНОМ
+(`start_check`) — проба идёт ~35–60 с, держать ответ HTTP столько нельзя.
+Проверки намеренно РАЗНЫЕ: активный decoy — против живого сервера (127.0.0.1:443,
+двойная проба как в мониторе), остальные — по петле мини сервер+клиент («одалживается
+ли рукопожатие», то есть годится ли для перехода). Статусы: `active_ok` / `active_fail`
+/ `ready` / `dead`. Пробы идут ПО ОЧЕРЕДИ (1 ГБ RAM) и под `flock`, порты 18557/10882/10884
+свои — 18555/10878 занял `decoy-monitor`, 10866 — `server-status`, 18443/10810 —
+`reality-env-check`; пересечься = поймать ложный FAIL. Если decoy-monitor переключил
+сервер уже ПОСЛЕ проверки, панель показывает такой узел как активный, но `dead` у
+активного НЕ переписывает — это как раз то, что надо увидеть.
+NB: имя переменной пути в скрипте — `OUT`, панель передаёт его как `OUT=DECOY_STATUS`
+(по умолчанию пути совпадают, поэтому расхождение всплыло только на тесте).
 
 **Запреты по людям**: в `users.json` у каждого `block_domains` и `block_tld`;
 `vpn-users.sh apply` собирает из них `route.rules` вида

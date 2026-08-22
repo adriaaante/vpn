@@ -35,11 +35,14 @@ HOSTFILE = os.environ.get("HOSTFILE", "/etc/sing-box/server-host.txt")
 DOMAIN_INFO = os.environ.get("DOMAIN_INFO", "/etc/sing-box/domain-info.json")
 PINFILE = os.environ.get("PINFILE", "/etc/sing-box/panel-pin.txt")
 USERS_SH = os.path.join(REPO, "scripts", "vpn-users.sh")
+DECOY_SH = os.path.join(REPO, "scripts", "decoy-status.sh")
+DECOY_STATUS = os.environ.get("DECOY_STATUS", "/etc/sing-box/decoy-status.json")
 PORT = int(os.environ.get("PANEL_PORT", "8787"))
 
 share_proc = {"name": None, "proc": None}
 sessions = set()
 fails = {"count": 0, "until": 0.0}
+check_proc = {"proc": None}   # идущая проверка узлов (decoy-status.sh)
 
 # Страны для запретов: зона + понятное название.
 ZONES = [(".ru", "Россия"), (".ua", "Украина"), (".by", "Беларусь"), (".kz", "Казахстан"),
@@ -196,6 +199,50 @@ def domain_info():
     return info
 
 
+def decoy_status():
+    """Последний срез доступности узлов (пишет scripts/decoy-status.sh).
+    Пусто — значит проверку ещё ни разу не запускали."""
+    try:
+        d = json.load(open(DECOY_STATUS))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def check_running():
+    p = check_proc.get("proc")
+    return bool(p and p.poll() is None)
+
+
+def start_check():
+    """Запустить проверку узлов ФОНОМ: она идёт около минуты (по очереди поднимает
+    мини сервер+клиент на каждый домен), а держать HTTP-ответ всё это время нельзя —
+    страница выглядела бы зависшей."""
+    if check_running():
+        return
+    check_proc["proc"] = subprocess.Popen(
+        # OUT, а не DECOY_STATUS: так называется переменная в самом скрипте. По
+        # умолчанию пути совпадают, поэтому расхождение не всплыло бы до первой
+        # нестандартной установки.
+        ["bash", DECOY_SH], env=dict(os.environ, CFG=CFG, OUT=DECOY_STATUS),
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def ago(ts):
+    """«5 минут назад» — владельцу важна свежесть среза, а не точное время."""
+    try:
+        d = int(time.time()) - int(ts)
+    except (TypeError, ValueError):
+        return "—"
+    if d < 90:
+        return "только что"
+    if d < 3600:
+        return f"{d // 60} мин. назад"
+    if d < 86400:
+        return f"{d // 3600} ч. назад"
+    return f"{d // 86400} дн. назад"
+
+
 def human(n):
     n = float(n)
     for unit in ("Б", "КБ", "МБ", "ГБ", "ТБ"):
@@ -310,6 +357,10 @@ button:hover,.btn:hover{border-color:var(--accent)}
 button.danger:hover{border-color:var(--bad);color:var(--bad)}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:550}
 button.primary:hover{filter:brightness(1.1)}
+/* Заблокированная кнопка обязана ВЫГЛЯДЕТЬ заблокированной: .primary красит фон
+   сам и перебивает серый вид от браузера. */
+button[disabled]{opacity:.45;cursor:default}
+button[disabled]:hover{border-color:var(--line);filter:none}
 .row{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
 .status{display:flex;gap:20px;flex-wrap:wrap;font-size:12.5px;color:var(--dim);
 margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
@@ -556,6 +607,80 @@ def server_modal():
         f'чтобы его не приняли за VPN.</div>'
         f'{"<div class=hint>" + " · ".join(links) + "</div>" if links else ""}'
         f'<div class="actions"><button onclick="closeM(\'server\')">Закрыть</button></div>')
+
+
+NODE_STATE = {
+    "active_ok":   ("on",  "работает сейчас"),
+    "active_fail": ("bad", "активен, но не отвечает"),
+    "ready":       ("mut", "готов к переходу"),
+    "dead":        ("off", "не годится"),
+}
+
+
+def nodes_modal(opened=False):
+    """Окно «Узлы»: какой домен-прикрытие доступен, а какой нет.
+
+    Нужно прежде всего для Shadowrocket: там узлы добавляются по одному и
+    переключаются РУКАМИ, поэтому владельцу надо видеть, какой сейчас рабочий.
+    В sing-box этот вопрос не стоит — он перебирает узлы сам.
+    """
+    st = server_status()
+    d = decoy_status()
+    res = d.get("results") or {}
+    active = d.get("active") or st["decoy"]
+    # Показываем весь список, даже если срез старый или его нет: пустая таблица
+    # выглядела бы поломкой.
+    domains = list(DECOYS)
+    for extra in (active, *res.keys()):
+        if extra and extra not in domains and "[" not in extra and len(extra) < 40:
+            domains.insert(0, extra)
+
+    rows = []
+    for dom in domains:
+        state = res.get(dom)
+        # Активный узел мог смениться уже ПОСЛЕ проверки (это делает decoy-monitor
+        # сам, раз в 15 минут) — тогда «готов к переходу» уже неправда: он несёт
+        # клиентов прямо сейчас. А вот «не годится» у активного НЕ переписываем:
+        # это как раз то, что владельцу надо увидеть.
+        if dom == st["decoy"] and state == "ready":
+            state = "active_ok"
+        cls, word = NODE_STATE.get(state, ("mut", "не проверялся"))
+        now = ' <span class="tag">сейчас на сервере</span>' if dom == st["decoy"] else ""
+        rows.append(f'<tr><td><div class="name">{html.escape(decoy_label(dom))}</div>'
+                    f'<div class="note">{html.escape(dom)}</div></td>'
+                    f'<td><span class="pill {cls}">{word}</span>{now}</td></tr>')
+
+    if check_running():
+        head = ('<div class="msg">Проверяю узлы — это занимает около минуты. '
+                'Закройте окно и откройте снова, чтобы увидеть результат.</div>')
+    elif d:
+        head = (f'<div class="hint" style="margin:0 0 14px">Последняя проверка: '
+                f'<b>{ago(d.get("checked_at"))}</b> (заняла {d.get("took", "?")} с).</div>')
+    else:
+        head = ('<div class="hint" style="margin:0 0 14px">Узлы ещё не проверялись — '
+                'нажмите «Проверить сейчас».</div>')
+
+    # Порты бывают неизвестны (нет ss или демон лежит) — тогда строка про каналы
+    # превратилась бы в «сейчас: — — если один перекроют».
+    ports_line = ("" if st["ports"] in ("—", "") else
+                  f'<div class="hint">Каналы (порты) сейчас: {html.escape(st["ports"])} — '
+                  f'если один перекроют, устройства уйдут в другой сами.</div>')
+    return modal(
+        "nodes", "Узлы", "Какие домены-прикрытия сейчас годятся, а какие нет.",
+        head +
+        f'<table><tr><th>Узел</th><th>Состояние</th></tr>{"".join(rows)}</table>'
+        f'<div class="hint">Сервер держит ОДИН узел за раз — тот, что помечен «сейчас '
+        f'на сервере». В <b>sing-box</b> это неважно: приложение перебирает узлы само. '
+        f'В <b>Shadowrocket</b> переключение ручное, поэтому человеку нужен именно '
+        f'активный узел; остальные он добавляет про запас.<br>'
+        f'«Готов к переходу» — домен проверен по петле и подойдёт, если сервер решит '
+        f'сменить прикрытие (это делает авто-монитор раз в 15 минут). '
+        f'«Не годится» — рукопожатие с этим доменом больше не одалживается.</div>'
+        f'{ports_line}'
+        f'<div class="actions">'
+        f'<form method="post" action="/act"><input type="hidden" name="op" value="check_decoys">'
+        f'<button class="primary"{" disabled" if check_running() else ""}>Проверить сейчас</button></form>'
+        f'<button onclick="closeM(\'nodes\')">Закрыть</button></div>', opened=opened)
 
 
 def add_modal():
@@ -1174,7 +1299,7 @@ def share_modal(name, opened=True):
         f'<button class="danger">Закрыть выдачу</button></form></div>', opened=opened)
 
 
-def page(msg="", err=False, extra_modal=""):
+def page(msg="", err=False, extra_modal="", open_nodes=False):
     st, dom = server_status(), domain_info()
     rows, modals = [], []
     for u in users():
@@ -1219,6 +1344,7 @@ def page(msg="", err=False, extra_modal=""):
 <title>FutureFlow — доступ к VPN</title><style>{CSS}</style></head><body><div class="wrap">
 <header>{logo_html()}<h1>Доступ к VPN</h1><span class="sp"></span>
 <button onclick="openM('analytics')">Аналитика</button>
+<button onclick="openM('nodes')">Узлы</button>
 <button onclick="openM('links')">Ссылки</button>
 <button onclick="openM('server')">Сервер и домен</button></header>
 {msg_html}
@@ -1231,7 +1357,7 @@ def page(msg="", err=False, extra_modal=""):
 <span><b>адрес</b> {html.escape(st['ip'])}</span>
 <span><b>домен</b> {dline}</span>
 </div></div>
-{add_modal()}{analytics_modal()}{links_modal()}{server_modal()}{''.join(modals)}{extra_modal}
+{add_modal()}{analytics_modal()}{nodes_modal(open_nodes)}{links_modal()}{server_modal()}{''.join(modals)}{extra_modal}
 <script>{JS}</script></body></html>"""
 
 
@@ -1395,6 +1521,9 @@ class Handler(BaseHTTPRequestHandler):
         if op == "share_stop":
             stop_share()
             return self._send(page("Выдача закрыта."))
+        if op == "check_decoys":
+            start_check()
+            return self._send(page(open_nodes=True))
         if op == "qrencode":
             out = sh("apt-get install -y qrencode >/dev/null 2>&1 && echo ok", timeout=180)
             return self._send(page(
