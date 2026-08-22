@@ -380,9 +380,13 @@ border-radius:11px;white-space:pre-wrap;margin-bottom:16px;
 font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
 .msg.err{background:rgba(255,107,107,.08);border-color:rgba(255,107,107,.35)}
 code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
-.linkrow{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;padding:9px 11px;
+.linkrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 11px;
 background:var(--card2);border-radius:9px;margin-bottom:8px}
 .linkrow .mode{min-width:150px;font-size:12.5px;color:var(--dim)}
+.linkrow code{flex:1 1 auto;min-width:0}
+.linkrow .cp{flex:none;margin-left:auto;font-size:12px;padding:4px 11px;border-radius:8px;
+background:var(--card);white-space:nowrap}
+button.ok,button.ok:hover{background:rgba(65,209,155,.15);border-color:var(--ok);color:var(--ok)}
 .tag{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);
 border:1px solid var(--line);padding:1px 6px;border-radius:5px}
 .zones{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px}
@@ -455,6 +459,24 @@ document.addEventListener('click',function(e){if(e.target.classList.contains('ma
  e.target.classList.remove('open')});
 document.addEventListener('keydown',function(e){if(e.key==='Escape')
  document.querySelectorAll('.mask.open').forEach(function(m){m.classList.remove('open')})});
+/* Копирование ссылки одной кнопкой. Панель открыта по 127.0.0.1 — это защищённый
+   контекст, поэтому clipboard API доступен; execCommand оставлен запасным путём
+   на случай нестандартного доступа к панели (не localhost). */
+function cpText(t,btn){
+  var old=btn.textContent;
+  function done(){btn.textContent='Скопировано ✓';btn.classList.add('ok');
+    setTimeout(function(){btn.textContent=old;btn.classList.remove('ok')},1700)}
+  function legacy(){var ta=document.createElement('textarea');ta.value=t;
+    ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);
+    ta.focus();ta.select();
+    try{document.execCommand('copy');done()}catch(e){btn.textContent='Не вышло — скопируйте вручную'}
+    document.body.removeChild(ta)}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(done,legacy)
+  }else legacy();
+}
+function cpRow(btn){cpText(btn.parentNode.querySelector('code').textContent.trim(),btn)}
+function cpSel(sel,btn){var e=document.querySelector(sel);if(e)cpText(e.textContent.trim(),btn)}
 """
 
 
@@ -1407,17 +1429,21 @@ def share_modal(name, opened=True):
         f'<li><b>Включить переключатель</b>'
         f'<div class="sub">Система спросит разрешение на VPN — согласиться.</div></li>'
         f'</ol></div></div>'
-        f'<div class="linkrow"><code>{html.escape(guide_link)}</code>'
-        f'<span class="tag">памятка — её и отправляйте</span></div>'
-        f'<div class="linkrow"><code>{html.escape(url)}</code><span class="tag">профиль</span></div>'
+        f'<div class="linkrow"><code id="glink-{nm}">{html.escape(guide_link)}</code>'
+        f'<span class="tag">памятка</span>'
+        f'<button type="button" class="cp" onclick="cpRow(this)">Скопировать</button></div>'
+        f'<div class="linkrow"><code>{html.escape(url)}</code><span class="tag">профиль</span>'
+        f'<button type="button" class="cp" onclick="cpRow(this)">Скопировать</button></div>'
         f'{alt}'
         f'<div class="hint">Ссылка отдаёт личный ключ без пароля — закройте выдачу сразу '
         f'после того, как человек импортировал профиль. «Закрыть выдачу» гасит только '
         f'раздачу файла: доступ, ключи и работающий туннель не трогает — ни гостю, ни вам.</div>'
         f'{pin_form}'
         f'<div class="actions">'
+        f'<button type="button" class="primary" onclick="cpSel(\'#glink-{nm}\',this)">'
+        f'Скопировать ссылку</button>'
         f'<a class="btn" href="/guide?{q}" target="_blank">Посмотреть памятку</a>'
-        f'<a class="btn primary" href="/guide?{q}&amp;dl=1">Скачать и отправить</a>'
+        f'<a class="btn" href="/guide?{q}&amp;dl=1">Скачать файлом</a>'
         f'<form method="post" action="/act"><input type="hidden" name="op" value="share_stop">'
         f'<button class="danger">Закрыть выдачу</button></form></div>', opened=opened)
 
