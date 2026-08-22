@@ -722,7 +722,7 @@ def qr_card(url, size=228, cap="Наведите камеру телефона �
 
 
 # Приложения для гостя. sing-box — рекомендуемый (авто-failover по узлам +
-# kill-switch), Shadowrocket — запасной: проще и есть в РФ App Store, но узлы
+# kill-switch), Shadowrocket — запасной: доступен в российском App Store, но узлы
 # переключаются вручную.
 APP_URL_SB = "https://apps.apple.com/app/id6673731168"   # sing-box VT
 APP_URL_SR = "https://apps.apple.com/app/id932747118"    # Shadowrocket
@@ -1254,7 +1254,7 @@ def guide_html(name):
     <label class="opt opt-sr" for="app-sr">
       <span class="badge grey">РФ App Store</span>
       <span class="ic">🚀</span>
-      <span class="t"><b>Shadowrocket</b><span>Проще и продаётся в российском App Store.</span></span>
+      <span class="t"><b>Shadowrocket</b><span>Приложение, доступное в российском App Store.</span></span>
       <span class="pick"></span>
     </label>
   </div>
@@ -1337,7 +1337,7 @@ def share_modal(name, opened=True):
         f'<div class="col"><ol class="steps">'
         f'<li><b>В памятке человек сам выберет приложение</b>'
         f'<div class="sub">Два варианта: <b>sing-box</b> (рекомендуется — авто-переключение '
-        f'узлов и kill-switch) или <b>Shadowrocket</b> (проще, есть в РФ App Store).</div></li>'
+        f'узлов и kill-switch) или <b>Shadowrocket</b> (доступен в российском App Store).</div></li>'
         f'<li><b>Под выбором — готовая инструкция и QR</b>'
         f'<div class="sub">sing-box: код выше → Import → Create. Shadowrocket: QR активного '
         f'узла + запасные ссылки.</div></li>'
