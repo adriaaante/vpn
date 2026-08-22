@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Подключение VPN</title>
+<style>
+  :root{
+    --bg1:#eef2ff; --bg2:#f8fafc; --card:#ffffff; --ink:#0f172a; --muted:#64748b;
+    --line:#e2e8f0; --brand:#4f46e5; --brand-ink:#ffffff; --ok:#059669; --ok-bg:#ecfdf5;
+    --warn:#b45309; --warn-bg:#fffbeb; --chip:#f1f5f9; --shadow:0 10px 30px rgba(15,23,42,.08);
+    --radius:20px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg1:#0b1020; --bg2:#0f172a; --card:#111827; --ink:#e5e7eb; --muted:#94a3b8;
+      --line:#1f2937; --brand:#6366f1; --brand-ink:#ffffff; --ok:#34d399; --ok-bg:#052e2b;
+      --warn:#fbbf24; --warn-bg:#2a2007; --chip:#0b1222; --shadow:0 10px 30px rgba(0,0,0,.4);
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 50% -10%, var(--bg1), transparent 60%),
+      var(--bg2);
+    -webkit-text-size-adjust:100%;
+    padding:max(16px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  .wrap{max-width:520px;margin:0 auto}
+  .brand{display:flex;align-items:center;gap:10px;justify-content:center;margin:18px 0 22px;color:var(--muted)}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 20%,transparent)}
+  .brand b{color:var(--ink)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .pad{padding:22px}
+  h1{font-size:22px;margin:0 0 6px;letter-spacing:-.01em}
+  h2{font-size:17px;margin:0 0 2px;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 18px;font-size:14px}
+
+  /* PIN */
+  #gate .pinrow{display:flex;gap:10px;justify-content:center;margin:8px 0 14px}
+  .pin-input{
+    width:100%;font-size:26px;text-align:center;letter-spacing:.5em;padding:16px 12px;
+    border:1.5px solid var(--line);border-radius:14px;background:var(--bg2);color:var(--ink);
+    outline:none;transition:border-color .15s,box-shadow .15s;font-variant-numeric:tabular-nums;
+  }
+  .pin-input:focus{border-color:var(--brand);box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 18%,transparent)}
+  .btn{
+    -webkit-appearance:none;appearance:none;border:0;cursor:pointer;width:100%;
+    font-size:16px;font-weight:600;padding:15px 16px;border-radius:14px;
+    background:var(--brand);color:var(--brand-ink);transition:transform .06s,opacity .15s;
+  }
+  .btn:active{transform:scale(.99)}
+  .btn[disabled]{opacity:.55;cursor:default}
+  .btn.sec{background:var(--chip);color:var(--ink);border:1px solid var(--line)}
+  .err{color:#dc2626;font-size:14px;text-align:center;min-height:20px;margin-top:10px}
+  @media (prefers-color-scheme: dark){.err{color:#f87171}}
+  .shake{animation:sh .35s}
+  @keyframes sh{10%,90%{transform:translateX(-1px)}30%,70%{transform:translateX(4px)}50%{transform:translateX(-6px)}}
+
+  /* Options */
+  #app{display:none}
+  .opts{display:grid;gap:12px;margin:4px 0 8px}
+  .opt{
+    position:relative;text-align:left;width:100%;cursor:pointer;
+    display:flex;gap:14px;align-items:center;
+    background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:16px;
+    transition:border-color .15s,box-shadow .15s,transform .06s;
+  }
+  .opt:active{transform:scale(.995)}
+  .opt .ic{flex:0 0 auto;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:22px;background:var(--chip)}
+  .opt .t{flex:1 1 auto;min-width:0}
+  .opt .t b{display:block;font-size:16px}
+  .opt .t span{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+  .opt .pick{flex:0 0 auto;width:24px;height:24px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;color:#fff;transition:all .15s}
+  .opt.on{border-color:var(--brand);box-shadow:0 0 0 4px color-mix(in srgb,var(--brand) 14%,transparent)}
+  .opt.on .pick{background:var(--brand);border-color:var(--brand)}
+  .opt.on .pick::after{content:"✓";font-size:14px;font-weight:800}
+  .badge{position:absolute;top:-9px;right:14px;font-size:11px;font-weight:700;letter-spacing:.02em;
+    background:var(--ok);color:#fff;padding:3px 9px;border-radius:999px}
+  .badge.grey{background:var(--muted)}
+
+  /* Details panel */
+  #panel{margin-top:16px;display:none}
+  #panel.show{display:block;animation:fade .2s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .note{font-size:13px;border-radius:12px;padding:12px 14px;margin:0 0 14px}
+  .note.ok{background:var(--ok-bg);color:var(--ok)}
+  .note.warn{background:var(--warn-bg);color:var(--warn)}
+  ol.steps{margin:0 0 6px;padding-left:20px}
+  ol.steps li{margin:0 0 8px}
+  .sect-h{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:18px 0 10px}
+  .prof{border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 0 12px;background:var(--bg2)}
+  .prof .top{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .prof .name{font-weight:600}
+  .prof .live{font-size:11px;font-weight:700;color:#fff;background:var(--ok);padding:2px 8px;border-radius:999px}
+  .qr{display:grid;place-items:center;background:#fff;border-radius:12px;padding:12px;margin:0 auto 12px;width:max-content}
+  .qr svg{display:block;width:200px;height:200px}
+  .linkbox{display:flex;gap:8px}
+  .linkbox input{flex:1;min-width:0;font-size:12px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .copy{flex:0 0 auto;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--chip);color:var(--ink);font-weight:600;cursor:pointer;font-size:14px}
+  .copy.done{background:var(--ok);color:#fff;border-color:var(--ok)}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin:22px 0 4px}
+  .srv{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><span class="dot"></span> <span>Личный VPN · <b>Латвия</b></span></div>
+
+  <!-- PIN gate -->
+  <section id="gate" class="card pad">
+    <h1>Введите PIN</h1>
+    <p class="sub">Данные для подключения зашифрованы. Введите PIN, который вам передали.</p>
+    <div class="pinrow">
+      <input id="pin" class="pin-input" type="password" inputmode="numeric" autocomplete="off"
+             enterkeyhint="go" placeholder="••••••" aria-label="PIN">
+    </div>
+    <button id="unlock" class="btn">Разблокировать</button>
+    <div id="err" class="err"></div>
+  </section>
+
+  <!-- App -->
+  <section id="app">
+    <div class="card pad">
+      <h1>Выберите приложение</h1>
+      <p class="sub">Оба варианта подключаются к одному серверу <span class="srv" id="srvip"></span>. Нажмите — покажется инструкция.</p>
+      <div class="opts">
+        <button class="opt" data-client="singbox">
+          <span class="badge">Рекомендуется</span>
+          <span class="ic">🧭</span>
+          <span class="t"><b>sing-box</b><span>Авто-переключение узлов + kill-switch. Надёжнее.</span></span>
+          <span class="pick"></span>
+        </button>
+        <button class="opt" data-client="shadowrocket">
+          <span class="badge grey">RU App Store</span>
+          <span class="ic">🚀</span>
+          <span class="t"><b>Shadowrocket</b><span>Проще, продаётся в российском App Store.</span></span>
+          <span class="pick"></span>
+        </button>
+      </div>
+    </div>
+
+    <div id="panel" class="card pad"></div>
+
+    <div class="foot">Секреты не покидают ваше устройство — расшифровка целиком в браузере.</div>
+  </section>
+</div>
+
+<!-- crypto + qr (inlined) -->
+<script>/*__SJCL__*/</script>
+<script>/*__QRCODE__*/</script>
+<script>
+"use strict";
+var BLOB = /*__BLOB_JSON__*/ null;
+
+var $ = function(s,r){return (r||document).querySelector(s)};
+var pinEl=$("#pin"), errEl=$("#err"), unlockBtn=$("#unlock");
+var DATA=null, qrCache={};
+
+function fail(msg){
+  errEl.textContent=msg;
+  var g=$("#gate"); g.classList.remove("shake"); void g.offsetWidth; g.classList.add("shake");
+  unlockBtn.disabled=false; unlockBtn.textContent="Разблокировать";
+}
+
+function unlock(){
+  var pin=(pinEl.value||"").trim();
+  if(pin.length<4){ fail("PIN слишком короткий."); return; }
+  unlockBtn.disabled=true; unlockBtn.textContent="Расшифровываю…"; errEl.textContent="";
+  // дать кадру отрисоваться перед тяжёлым PBKDF2
+  setTimeout(function(){
+    try{
+      var key=sjcl.misc.pbkdf2(pin, sjcl.codec.base64.toBits(BLOB.salt), BLOB.iter, 256);
+      var pt=sjcl.mode.gcm.decrypt(new sjcl.cipher.aes(key),
+        sjcl.codec.base64.toBits(BLOB.ct), sjcl.codec.base64.toBits(BLOB.iv), [], 128);
+      DATA=JSON.parse(sjcl.codec.utf8String.fromBits(pt));
+    }catch(e){ fail("Неверный PIN."); return; }
+    $("#gate").style.display="none";
+    var app=$("#app"); app.style.display="block";
+    $("#srvip").textContent=DATA.server||"";
+    bindOptions();
+  }, 30);
+}
+unlockBtn.addEventListener("click", unlock);
+pinEl.addEventListener("keydown", function(e){ if(e.key==="Enter") unlock(); });
+
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]})}
+
+function qrSvg(text){
+  if(qrCache[text]) return qrCache[text];
+  var qr=qrcode(0,"M"); qr.addData(text); qr.make();
+  var svg=qr.createSvgTag({cellSize:4,margin:2,scalable:true});
+  qrCache[text]=svg; return svg;
+}
+
+var CLIENTS={
+  singbox:{
+    title:"sing-box",
+    note:{cls:"ok",html:"Рекомендуемый вариант: сам переключается между запасными узлами, если основной заблокируют, и умеет kill-switch (не пускает трафик мимо туннеля)."},
+    steps:[
+      "Откройте приложение <b>sing-box</b> (sing-box VT).",
+      "Нажмите <b>+</b> → <b>Import from QR</b> (или из буфера) и отсканируйте QR ниже.",
+      "Добавьте все узлы (apple / cloudflare / google / mozilla) — приложение само выберет рабочий.",
+      "Вернитесь на главный экран и включите переключатель."
+    ],
+    showConfig:true
+  },
+  shadowrocket:{
+    title:"Shadowrocket",
+    note:{cls:"warn",html:"Автопереключения узлов нет. Если перестало подключаться — выберите вручную профиль, отмеченный «активен сейчас», либо соседний."},
+    steps:[
+      "Откройте <b>Shadowrocket</b>.",
+      "Значок <b>сканера</b> слева вверху → отсканируйте QR (или скопируйте ссылку — приложение подхватит её из буфера).",
+      "Добавьте все четыре профиля.",
+      "Выберите профиль <b>активен сейчас</b> и включите переключатель вверху.",
+      "Настройки → Глобальный роутинг → <b>Прокси</b>, чтобы весь трафик шёл через VPN."
+    ],
+    showConfig:false
+  }
+};
+
+function bindOptions(){
+  var opts=document.querySelectorAll(".opt");
+  opts.forEach(function(o){
+    o.addEventListener("click", function(){
+      opts.forEach(function(x){x.classList.remove("on")});
+      o.classList.add("on");
+      render(o.getAttribute("data-client"));
+    });
+  });
+}
+
+function render(client){
+  var c=CLIENTS[client], p=$("#panel");
+  var h='<h2>'+esc(c.title)+'</h2><p class="sub">Инструкция для этого приложения</p>';
+  h+='<div class="note '+c.note.cls+'">'+c.note.html+'</div>';
+  h+='<ol class="steps">'+c.steps.map(function(s){return "<li>"+s+"</li>"}).join("")+'</ol>';
+
+  if(c.showConfig && DATA.singboxConfig){
+    h+='<div class="sect-h">Или конфиг с авто-failover</div>';
+    h+='<p class="sub" style="margin-top:-4px">Один профиль со всеми узлами и авто-переключением. Скопируйте и в sing-box создайте профиль из буфера.</p>';
+    h+='<div class="linkbox"><input id="cfgbox" readonly value="конфиг sing-box (JSON)"><button class="copy" data-copy="__CFG__">Копировать</button></div>';
+  }
+
+  h+='<div class="sect-h">Узлы — добавьте все</div>';
+  (DATA.links||[]).forEach(function(l,i){
+    var live = (DATA.currentSni && l.sni===DATA.currentSni);
+    h+='<div class="prof">'
+      +'<div class="top"><span class="name">'+esc(l.name)+'</span>'+(live?'<span class="live">активен сейчас</span>':'')+'</div>'
+      +'<div class="qr" data-qr="'+i+'"></div>'
+      +'<div class="linkbox"><input readonly value="'+esc(l.url)+'"><button class="copy" data-copy="'+i+'">Копировать</button></div>'
+      +'</div>';
+  });
+
+  p.innerHTML=h; p.classList.add("show");
+  // отрисовать QR
+  p.querySelectorAll("[data-qr]").forEach(function(box){
+    var l=DATA.links[+box.getAttribute("data-qr")];
+    box.innerHTML=qrSvg(l.url);
+  });
+  // копирование
+  p.querySelectorAll(".copy").forEach(function(b){
+    b.addEventListener("click", function(){
+      var k=b.getAttribute("data-copy");
+      var text = (k==="__CFG__") ? DATA.singboxConfig : DATA.links[+k].url;
+      copy(text, b);
+    });
+  });
+  p.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+function copy(text, btn){
+  var done=function(){ var t=btn.textContent; btn.textContent="Готово"; btn.classList.add("done");
+    setTimeout(function(){btn.textContent=t;btn.classList.remove("done")},1400); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done, function(){legacyCopy(text,done)});
+  } else legacyCopy(text,done);
+}
+function legacyCopy(text,done){
+  var ta=document.createElement("textarea"); ta.value=text;
+  ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try{ document.execCommand("copy"); done(); }catch(e){}
+  document.body.removeChild(ta);
+}
+
+pinEl.focus();
+</script>
+</body>
+</html>
