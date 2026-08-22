@@ -837,6 +837,15 @@ padding:2px 8px;border-radius:999px}
 .node .qrtile{margin:0 auto 11px}
 .node .link{margin:0}
 .sect-note{color:var(--dim);font-size:12.5px;margin:18px 0 10px}
+/* Узел-кнопка: весь заголовок кликабелен, по нажатию телефон рисует QR. */
+.nodebtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;cursor:pointer;
+background:transparent;border:0;padding:0;margin:0 0 11px;color:var(--fg);font:inherit}
+.nodebtn:hover{border:0}
+.nodebtn .nn{flex:1}
+.nodebtn .chev{font-size:11px;color:var(--accent);white-space:nowrap}
+.qrslot{display:none}
+.qrslot svg{display:block;width:200px;max-width:100%;height:auto;background:#fff;
+padding:10px;border-radius:12px;margin:0 auto 11px}
 
 /* Кнопки «сохранить в PDF» в памятке нет намеренно, но напечатать страницу
    браузер даёт всегда — пусть это хотя бы выглядит прилично и не жрёт тонер. */
@@ -901,11 +910,45 @@ def vless_link(uuid, host, sni, label, rp, port=443):
             f"#{urllib.parse.quote(label)}")
 
 
-def qr_tile(text, size=140):
-    """Только белая плитка с QR (без фирменной карточки/логотипа) — для сетки узлов
-    Shadowrocket. Пусто, если на сервере нет qrencode (тогда рядом остаётся ссылка)."""
-    svg = qr_svg(text)
-    return f'<div class="qrtile" style="--qr:{size}px">{svg}</div>' if svg else ""
+# Клиентская отрисовка QR для узлов Shadowrocket: qr_svg() на сервере строил бы
+# по 6 QR на памятку (мегабайты + медленная расшифровка под ПИНом), поэтому QR
+# рисует сам телефон по нажатию. srqr тумблит QR узла, srInit раскрывает активный.
+# onclick в разметке работает даже когда блок вставлен через innerHTML (в отличие
+# от <script>), поэтому функции держим глобально в <head>.
+QR_LIB_FILE = os.path.join(REPO, "scripts", "assets", "qrcode.min.js")
+SR_QR_JS = """
+function srqr(btn){
+  var slot=btn.parentNode.querySelector('.qrslot'), chev=btn.querySelector('.chev');
+  if(slot.getAttribute('data-done')){
+    var vis=slot.style.display!=='none'; slot.style.display=vis?'none':'block';
+    if(chev)chev.textContent=vis?'Показать QR':'Скрыть QR'; return;
+  }
+  try{
+    var q=qrcode(0,'M'); q.addData(btn.getAttribute('data-vless')); q.make();
+    slot.innerHTML=q.createSvgTag({cellSize:4,margin:2,scalable:true});
+    slot.setAttribute('data-done','1'); slot.style.display='block';
+    if(chev)chev.textContent='Скрыть QR';
+  }catch(e){ slot.textContent='Не удалось построить QR — используйте ссылку ниже.';
+    slot.style.display='block'; }
+}
+function srInit(){
+  var opened=document.querySelectorAll('.nodebtn[data-open]');
+  for(var i=0;i<opened.length;i++) srqr(opened[i]);
+}
+document.addEventListener('DOMContentLoaded',function(){
+  // при ПИНе узлы появятся только после расшифровки — там srInit зовёт go()
+  if(!document.getElementById('lock')) srInit();
+});
+"""
+
+
+def guide_scripts():
+    """QR-библиотека + обработчики для узлов Shadowrocket, инлайном в <head>.
+    Пусто, если вендоренной библиотеки нет (тогда останется ссылка узла текстом)."""
+    lib = _read(QR_LIB_FILE)
+    if not lib:
+        return ""
+    return f"<script>{lib}</script><script>{SR_QR_JS}</script>"
 
 
 # ПИН на памятку: внутри файла лежит не ссылка, а шифртекст — без ПИНа из него
@@ -1074,6 +1117,7 @@ async function go(){
   if (plain === null) { err.textContent = "Неверный код. Попробуйте ещё раз."; pin = ""; draw(); return }
   document.getElementById('secret').innerHTML = plain;
   box.remove();
+  if (typeof srInit === 'function') srInit();   // раскрыть QR активного узла
 }
 """
 
@@ -1134,29 +1178,33 @@ def guide_html(name):
         domains = list(DECOYS)
         if cur and cur not in domains and "[" not in cur and len(cur) < 40:
             domains.insert(0, cur)
-        # активный узел — первым и крупно (с QR), остальные — про запас списком.
-        # Запасным QR не рисуем намеренно: 6 QR раздули бы страницу до мегабайтов
-        # (а под ПИНом ещё и замедлили бы расшифровку в браузере). Shadowrocket
-        # умеет добавлять узел из буфера — ссылки достаточно.
+        # Активный узел — первым (у него QR раскрыт сразу). Остальные — про запас;
+        # их QR рисует САМ телефон по нажатию (qrcode.min.js), а не сервер: шесть
+        # серверных QR раздули бы файл до мегабайтов и под ПИНом тормозили расшифровку.
         domains.sort(key=lambda d: d != cur)
 
-        def node(sni, live, with_qr):
+        def node(sni, live):
             link = vless_link(uuid, host, sni, f"LV-{decoy_label(sni)}", rp)
+            esc = html.escape(link)
             badge = '<span class="badge">активен сейчас</span>' if live else ""
-            qr = qr_tile(link, 176) if with_qr else ""
+            # data-open=1 у активного: srInit раскроет его QR сразу при показе.
+            openattr = ' data-open="1"' if live else ""
             return (f'<div class="node{" live" if live else ""}">'
-                    f'<div class="nh"><span class="nn">Латвия · {html.escape(decoy_label(sni))}</span>{badge}</div>'
-                    f'{qr}'
-                    f'<div class="link">{html.escape(link)}</div></div>')
+                    f'<button type="button" class="nh nodebtn" data-vless="{esc}"{openattr} onclick="srqr(this)">'
+                    f'<span class="nn">Латвия · {html.escape(decoy_label(sni))}</span>{badge}'
+                    f'<span class="chev">Показать QR</span></button>'
+                    f'<div class="qrslot"></div>'
+                    f'<div class="link">{esc}</div></div>')
 
         active = domains[0]
         rest = domains[1:]
-        nodes_html = node(active, active == cur, with_qr=True)
+        nodes_html = node(active, active == cur)
         if rest:
             nodes_html += ('<div class="sect-note">Запасные узлы — если основной '
-                           'перестанет открываться, добавьте любой (скопируйте ссылку → '
-                           'в Shadowrocket «+» → Add from clipboard):</div>'
-                           + "".join(node(d, False, with_qr=False) for d in rest))
+                           'перестанет открываться. Нажмите на узел, чтобы открыть его '
+                           'QR (или скопируйте ссылку → в Shadowrocket «+» → Add from '
+                           'clipboard):</div>'
+                           + "".join(node(d, False) for d in rest))
     else:
         nodes_html = ('<div class="note warn">Ссылки для Shadowrocket сейчас собрать не '
                       'удалось — воспользуйтесь вариантом sing-box слева.</div>')
@@ -1169,12 +1217,16 @@ def guide_html(name):
         <div class="sub">App Store: <a href="{APP_URL_SR}">{APP_URL_SR}</a>. Платное
         (~$3), есть в российском App Store.</div></li>
       <li><b>Отсканируйте QR активного узла</b>
-        <div class="sub">В приложении значок <b>сканера</b> слева вверху → наведите на
-        QR ниже. Или скопируйте ссылку — Shadowrocket подхватит её из буфера
-        (кнопка «+» → Add from clipboard).</div></li>
+        <div class="sub">Откройте вкладку <b>Главная</b> и нажмите значок
+        <b>сканера</b> вверху справа → наведите на QR ниже (у активного узла он уже
+        раскрыт). Не сканируется — нажмите и подержите на ссылке под QR →
+        «Скопировать», Shadowrocket подхватит её из буфера сам.</div>
+        <div class="sub">Важно: тип узла оставьте как есть. Экран «Добавить сервер» с
+        типом <i>Subscribe</i> — это НЕ то: наш QR туда не добавляется. Нужен именно
+        сканер с вкладки «Главная».</div></li>
       <li><b>Добавьте и запасные узлы</b>
         <div class="sub">Если основной перестанет открываться — переключитесь на
-        другой из списка ниже.</div></li>
+        другой. Нажмите на узел в списке ниже, чтобы открыть его QR.</div></li>
       <li><b>Включите переключатель вверху</b>
         <div class="sub">Затем Settings → <b>Global Routing → Proxy</b>, чтобы весь
         трафик шёл через VPN. Проверка на <code>ipinfo.io</code>: страна Латвия (LV).</div></li>
@@ -1223,7 +1275,8 @@ def guide_html(name):
 
     return f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FutureFlow — доступ для {nm}</title><style>{GUIDE_CSS}</style></head><body>
+<title>FutureFlow — доступ для {nm}</title><style>{GUIDE_CSS}</style>
+{guide_scripts()}</head><body>
 <div class="sheet">
 <header>{logo_html()}<h1>Доступ к VPN</h1></header>
 
