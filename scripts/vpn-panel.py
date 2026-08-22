@@ -38,6 +38,10 @@ PINFILE = os.environ.get("PINFILE", "/etc/sing-box/panel-pin.txt")
 USERS_SH = os.path.join(REPO, "scripts", "vpn-users.sh")
 DECOY_SH = os.path.join(REPO, "scripts", "decoy-status.sh")
 DECOY_STATUS = os.environ.get("DECOY_STATUS", "/etc/sing-box/decoy-status.json")
+# Кто и с какого pid раздаёт сейчас. В файле, а не только в памяти: раздача
+# переживает закрытие панели, а новая панель должна знать, что она идёт,
+# и уметь её закрыть.
+SHARE_STATE = os.environ.get("SHARE_STATE", "/etc/sing-box/share-state.json")
 PORT = int(os.environ.get("PANEL_PORT", "8787"))
 
 share_proc = {"name": None, "proc": None}
@@ -420,6 +424,10 @@ a:hover{text-decoration:underline}
 border-radius:11px;white-space:pre-wrap;margin-bottom:16px;
 font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
 .msg.err{background:rgba(255,107,107,.08);border-color:rgba(255,107,107,.35)}
+.msg.warn{background:rgba(240,164,65,.09);border-color:rgba(240,164,65,.32);
+font:13.5px/1.5 -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,sans-serif;
+display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.msg.warn span{flex:1;min-width:240px}
 code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
 .linkrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 11px;
 background:var(--card2);border-radius:9px;margin-bottom:8px}
@@ -1560,6 +1568,20 @@ def page(msg="", err=False, extra_modal="", open_nodes=False):
         modals.append(limits_modal(u))
 
     msg_html = f'<div class="msg{" err" if err else ""}">{html.escape(msg)}</div>' if msg else ""
+    # Раздача живёт, пока её не закроют, поэтому про неё должно быть видно всегда,
+    # а не только в окне «Настройки»: открытая ссылка отдаёт личный ключ без пароля.
+    sh_st = share_state()
+    if sh_st:
+        since = ago(sh_st.get("started"))
+        share_banner = (
+            f'<div class="msg warn"><span>Выдача открыта для '
+            f'<b>{html.escape(pretty(str(sh_st.get("name", ""))))}</b> — ссылка на памятку '
+            f'работает{"" if since == "—" else f", открыта {since}"}. Она отдаёт личный ключ '
+            f'без пароля, поэтому закройте её, когда человек настроится.</span>'
+            f'<form method="post" action="/act"><input type="hidden" name="op" value="share_stop">'
+            f'<button class="danger">Закрыть выдачу</button></form></div>')
+    else:
+        share_banner = ""
     body = "".join(rows) or '<tr><td colspan="4" class="note">Пока никого нет</td></tr>'
     left = dom.get("days_left")
     dline = html.escape(dom.get("host", "—")) + (f' · {left} дн. до продления' if left is not None else "")
@@ -1571,7 +1593,7 @@ def page(msg="", err=False, extra_modal="", open_nodes=False):
 <button onclick="openM('nodes')">Узлы</button>
 <button onclick="openM('links')">Ссылки</button>
 <button onclick="openM('server')">Сервер и домен</button></header>
-{msg_html}
+{msg_html}{share_banner}
 <div class="card"><div class="cardhead"><h2>Кто пользуется</h2><span class="sp"></span>
 <button class="primary" onclick="openM('add')">Добавить человека</button></div>
 <table><tr><th>Имя</th><th>Доступ</th><th>Ограничения</th><th></th></tr>{body}</table>
@@ -1626,6 +1648,36 @@ def publish_guide_async(name, wait=60.0):
     threading.Thread(target=publish_guide, args=(name, wait), daemon=True).start()
 
 
+def _is_share(pid):
+    """Это точно наш процесс раздачи, а не чужой с переиспользованным pid.
+    Проверка по аргументам, как в take_over_port: pid'ы переиспользуются, и
+    убить по записи из файла что попало — плохая идея."""
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            argv = [x.decode("utf-8", "replace") for x in f.read().split(b"\0") if x]
+    except OSError:
+        return False
+    return any(a.endswith("vpn-users.sh") for a in argv) and "share" in argv
+
+
+def share_state():
+    """Идёт ли раздача сейчас: {name, pid, started} или {}. Читаем с диска —
+    раздачу мог запустить прежний экземпляр панели."""
+    try:
+        d = json.load(open(SHARE_STATE))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    pid = d.get("pid")
+    if isinstance(pid, int) and _is_share(pid):
+        return d
+    # процесс умер сам (ошибка, перезагрузка) — состояние протухло
+    try:
+        os.remove(SHARE_STATE)
+    except OSError:
+        pass
+    return {}
+
+
 def start_share(name):
     stop_share()
     # Закрепляем токен ДО запуска скрипта. Иначе гонка: скрипт, не найдя токена,
@@ -1633,19 +1685,40 @@ def start_share(name):
     # другой и положит памятку мимо — по ссылке остался бы листинг каталога.
     share_token(name)
     env = dict(os.environ, STORE=STORE, CFG=CFG)
-    share_proc["proc"] = subprocess.Popen(
+    # start_new_session: раздача уходит в СВОЮ сессию, поэтому переживает и выход
+    # из панели, и обрыв ssh (HUP по сессии до неё не долетает). Закрывается
+    # только кнопкой «Закрыть выдачу».
+    proc = subprocess.Popen(
         ["bash", USERS_SH, "share", name], env=env,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    share_proc["name"] = name
+    share_proc.update({"proc": proc, "name": name})
+    try:
+        with open(SHARE_STATE, "w") as f:
+            json.dump({"name": name, "pid": proc.pid, "started": int(time.time())}, f)
+    except OSError:
+        pass
 
 
 def stop_share():
-    p = share_proc.get("proc")
-    if p and p.poll() is None:
-        try:
-            os.killpg(os.getpgid(p.pid), signal.SIGTERM)
-        except Exception:
-            p.terminate()
+    st = share_state()
+    pid = st.get("pid")
+    if pid:
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(os.getpgid(pid), sig)
+            except OSError:
+                break
+            for _ in range(10):
+                time.sleep(0.2)
+                if not _is_share(pid):
+                    break
+            else:
+                continue
+            break
+    try:
+        os.remove(SHARE_STATE)
+    except OSError:
+        pass
     share_proc.update({"proc": None, "name": None})
 
 
@@ -1740,7 +1813,7 @@ class Handler(BaseHTTPRequestHandler):
             save_users(lst)
             # Памятка уже лежит в раздаче — пересобираем, иначе там остался бы
             # старый код (или его отсутствие).
-            if share_proc.get("name") == name:
+            if share_state().get("name") == name:
                 publish_guide_async(name, wait=15)
             return self._send(page(f"Код на памятку {'сохранён' if pin else 'снят'}: {name}",
                                    extra_modal=share_modal(name)))
@@ -1845,8 +1918,14 @@ def take_over_port():
 
 
 def bye(*_):
-    stop_share()
-    print("\nОстановлено.")
+    # Раздачу тут НЕ трогаем: ссылка на памятку должна жить, пока владелец сам не
+    # нажмёт «Закрыть выдачу». Раньше выход из панели (Ctrl+C, обрыв ssh) уносил
+    # её с собой, и у человека ссылка внезапно переставала открываться.
+    st = share_state()
+    if st:
+        print(f"\nРаздача для «{st.get('name')}» продолжает работать. "
+              f"Закрыть — кнопкой «Закрыть выдачу» в панели.")
+    print("Остановлено.")
     raise SystemExit(0)
 
 
