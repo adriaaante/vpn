@@ -21,3 +21,6 @@ cache.db
 # Прочее
 .DS_Store
 *.log
+
+# Python
+__pycache__/
