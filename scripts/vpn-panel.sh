@@ -34,6 +34,37 @@ REMOTE="cd /root/vpn && git fetch -q origin && B=\$(git branch -r | grep -m1 '$B
 [ -n \"\$B\" ] || { echo \"[!] На сервере не нашлась ветка по '$BRANCH_GREP' — обновить нечем.\"; exit 1; } && \
 echo \"[*] Разворачиваю \$B\" && git checkout \$B -- scripts assets && PANEL_PORT='$PORT' python3 scripts/vpn-panel.py"
 
+# Прежний туннель мог остаться жить: терминал закрыли без Ctrl+C или связь
+# пропала, а ssh на маке продолжает держать локальный порт. Тогда новый ssh НЕ
+# может пробросить порт — но всё равно подключается, и получается худший вариант:
+# панель на сервере поднялась, а браузер к ней не достучится («Safari не может
+# подключиться к серверу»). Поэтому снимаем прежний туннель сами.
+# Убиваем ТОЛЬКО ssh: если порт занял посторонний процесс, честно говорим об этом.
+free_local_port(){
+  command -v lsof >/dev/null 2>&1 || return 0
+  local pids p comm
+  pids=$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u)
+  [[ -n "$pids" ]] || return 0
+  for p in $pids; do
+    comm=$(ps -o comm= -p "$p" 2>/dev/null)
+    case "$comm" in
+      *ssh)
+        echo "[*] Прежняя сессия панели (pid $p) держит порт $PORT — закрываю её."
+        kill "$p" 2>/dev/null ;;
+      *)
+        echo "[!] Порт $PORT занят посторонним процессом: ${comm:-неизвестно} (pid $p)."
+        echo "    Это не наш туннель, трогать не буду. Запустите на другом порту:"
+        echo "    PANEL_PORT=8788 bash scripts/vpn-panel.sh"
+        return 1 ;;
+    esac
+  done
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [[ -z "$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null)" ]] && return 0
+    sleep 0.3
+  done
+  return 0
+}
+
 # Длинный SSH к зарубежному адресу иногда рвут на пути или он отваливается по
 # простою — тогда панель просто пропадала. Держим keepalive и переподключаемся,
 # пока не нажат Ctrl+C. Токен не меняется, поэтому вкладку перезагружать не надо.
@@ -41,8 +72,12 @@ STOP=0
 FAILS=0
 trap 'STOP=1' INT
 while [[ $STOP -eq 0 ]]; do
+  free_local_port || exit 1
   started=$(date +%s)
+  # ExitOnForwardFailure: без него ssh молча подключается БЕЗ проброса порта, и
+  # браузер упирается в «не удаётся подключиться», хотя панель на сервере жива.
   ssh -t -o ServerAliveInterval=20 -o ServerAliveCountMax=3 -o TCPKeepAlive=yes \
+      -o ExitOnForwardFailure=yes \
       -L "$PORT:127.0.0.1:$PORT" "$SRV" "$REMOTE"
   rc=$?
   [[ $STOP -eq 1 ]] && break

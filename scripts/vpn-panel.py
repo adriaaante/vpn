@@ -384,6 +384,18 @@ code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-al
 background:var(--card2);border-radius:9px;margin-bottom:8px}
 .linkrow .mode{min-width:150px;font-size:12.5px;color:var(--dim)}
 .linkrow code{flex:1 1 auto;min-width:0}
+/* Главная строка — ссылка, которую отправляют: крупнее и с кнопкой рядом, а не
+   в самом низу окна, куда она уезжала от глаз. */
+.linkrow.big{padding:12px 14px;gap:12px;background:var(--card2);
+border:1px solid var(--line)}
+.linkrow.big code{font-size:13.5px}
+.linkrow.big .cp{font-size:13px;padding:8px 16px;font-weight:550}
+details.fold{margin:14px 0 0}
+details.fold summary{cursor:pointer;list-style:none;color:var(--accent);font-size:12.5px;
+padding:4px 0;display:inline-flex;align-items:center;gap:7px}
+details.fold summary::-webkit-details-marker{display:none}
+details.fold summary:before{content:"▸";font-size:10px;transition:transform .15s}
+details.fold[open] summary:before{transform:rotate(90deg)}
 .linkrow .cp{flex:none;margin-left:auto;font-size:12px;padding:4px 11px;border-radius:8px;
 background:var(--card);white-space:nowrap}
 button.ok,button.ok:hover{background:rgba(65,209,155,.15);border-color:var(--ok);color:var(--ok)}
@@ -410,7 +422,7 @@ margin-top:6px;display:block}
 display:none;align-items:flex-start;justify-content:center;padding:6vh 16px;z-index:50}
 .mask.open{display:flex}
 .modal{background:var(--card);border:1px solid var(--line);border-radius:16px;
-width:min(640px,100%);padding:22px 24px;max-height:86vh;overflow:auto;
+width:min(760px,100%);padding:22px 24px;max-height:86vh;overflow:auto;
 box-shadow:0 24px 60px rgba(0,0,0,.55)}
 .modal h3{margin:0 0 4px;font-size:17px;font-weight:640}
 .modal .sub{color:var(--dim);font-size:13px;margin:0 0 18px}
@@ -629,7 +641,20 @@ def server_modal():
         f'«Маскируется под сайт» — под каким известным сайтом сервер прячет соединение, '
         f'чтобы его не приняли за VPN.</div>'
         f'{"<div class=hint>" + " · ".join(links) + "</div>" if links else ""}'
+        f'{qrencode_offer()}'
         f'<div class="actions"><button onclick="closeM(\'server\')">Закрыть</button></div>')
+
+
+def qrencode_offer():
+    """Кнопка установки qrencode — только если его на сервере нет. Без него в
+    памятке не строится QR sing-box (узлы Shadowrocket рисует сам телефон)."""
+    if shutil.which("qrencode"):
+        return ""
+    return ('<div class="hint" style="margin-top:14px">На сервере нет <code>qrencode</code> — '
+            'в памятке не строится QR для sing-box, остаётся только ссылка текстом.</div>'
+            '<form method="post" action="/act" style="margin-top:8px">'
+            '<input type="hidden" name="op" value="qrencode">'
+            '<button class="primary">Включить QR-коды</button></form>')
 
 
 NODE_STATE = {
@@ -725,21 +750,18 @@ def add_modal():
         '<button class="primary">Создать и показать настройки</button></div></form>')
 
 
-def qr_card(url, size=228, cap="Наведите камеру телефона на код", offer_install=False):
+def qr_card(url, size=228, cap="Наведите камеру телефона на код"):
     """QR вместе с логотипом: тёмная фирменная карточка, внутри белая плитка кода.
     Логотип рядом, а не поверх кода — так он не съедает модули и код читается
-    даже с потёртого скриншота."""
+    даже с потёртого скриншота. Кнопки «поставить qrencode» здесь нет намеренно:
+    карточка уезжает в памятку гостю, где форма панели никуда не ведёт. Поставить
+    пакет можно в окне «Сервер и домен»."""
     svg = qr_svg(url)
-    # В памятке (offer_install=False) кнопки быть не должно: файл уезжает человеку
-    # и там форма панели никуда не ведёт.
-    fix = ('<form method="post" action="/act" style="margin-top:8px">'
-           '<input type="hidden" name="op" value="qrencode">'
-           '<button>Включить QR-коды</button></form>' if offer_install else "")
     tail = f'<div class="qrcap">{html.escape(cap)}</div>' if cap else ""
     inner = (f'<div class="qrtile">{svg}</div>{tail}'
              if svg else
              '<div class="qrcap" style="max-width:220px">QR не построен: на сервере нет '
-             'qrencode. Отправьте ссылку текстом.</div>' + fix)
+             'qrencode. Отправьте ссылку текстом.</div>')
     return (f'<div class="qrcard" style="--qr:{size}px">'
             f'<div class="qrlogo">{logo_html()}</div>{inner}</div>')
 
@@ -1415,33 +1437,27 @@ def share_modal(name, opened=True):
         f'<code>{html.escape(url.replace(host, st["ip"], 1))}</code></div>')
     return modal(
         f"cfg-{nm}", f"Настройки для «{html.escape(pretty(name))}»",
-        "Отправьте человеку ссылку на памятку — она откроется у него в браузере "
-        "как страница. Файлом тоже можно, но во встроенном просмотре мессенджера "
-        "цифры кода не нажимаются.",
-        f'<div class="split"><div class="col qrcol">{qr_card(deep_link(url, name), 196, cap="Код открывает sing-box", offer_install=True)}</div>'
-        f'<div class="col"><ol class="steps">'
-        f'<li><b>В памятке человек сам выберет приложение</b>'
-        f'<div class="sub">Два варианта: <b>sing-box</b> (рекомендуется — авто-переключение '
-        f'узлов и kill-switch) или <b>Shadowrocket</b> (доступен в российском App Store).</div></li>'
-        f'<li><b>Под выбором — готовая инструкция и QR</b>'
-        f'<div class="sub">sing-box: код выше → Import → Create. Shadowrocket: QR активного '
-        f'узла + запасные ссылки.</div></li>'
-        f'<li><b>Включить переключатель</b>'
-        f'<div class="sub">Система спросит разрешение на VPN — согласиться.</div></li>'
-        f'</ol></div></div>'
-        f'<div class="linkrow"><code id="glink-{nm}">{html.escape(guide_link)}</code>'
-        f'<span class="tag">памятка</span>'
-        f'<button type="button" class="cp" onclick="cpRow(this)">Скопировать</button></div>'
+        "Отправьте человеку ссылку — она откроется у него в браузере как страница "
+        "с QR и инструкцией. Работает, пока идёт выдача.",
+        # QR со схемой sing-box отсюда убран намеренно: владельцу он не нужен —
+        # человек получает свой QR прямо в памятке, причём для ОБОИХ приложений.
+        f'<label>Ссылка для отправки</label>'
+        f'<div class="linkrow big"><code id="glink-{nm}">{html.escape(guide_link)}</code>'
+        f'<button type="button" class="cp primary" onclick="cpRow(this)">Скопировать</button></div>'
+        f'<div class="hint">Человек откроет ссылку, введёт код и сам выберет приложение — '
+        f'<b>sing-box</b> (рекомендуем: сам переключает узлы, есть kill-switch) или '
+        f'<b>Shadowrocket</b> (доступен в российском App Store). Инструкция и QR для '
+        f'выбранного покажутся там же.</div>'
+        f'{pin_form}'
+        f'<div class="hint" style="margin-top:14px">Ссылка отдаёт личный ключ без пароля — '
+        f'закройте выдачу сразу после того, как человек импортировал профиль. «Закрыть '
+        f'выдачу» гасит только раздачу файла: доступ, ключи и работающий туннель не '
+        f'трогает — ни гостю, ни вам.</div>'
+        f'<details class="fold"><summary>Другие адреса</summary>'
         f'<div class="linkrow"><code>{html.escape(url)}</code><span class="tag">профиль</span>'
         f'<button type="button" class="cp" onclick="cpRow(this)">Скопировать</button></div>'
-        f'{alt}'
-        f'<div class="hint">Ссылка отдаёт личный ключ без пароля — закройте выдачу сразу '
-        f'после того, как человек импортировал профиль. «Закрыть выдачу» гасит только '
-        f'раздачу файла: доступ, ключи и работающий туннель не трогает — ни гостю, ни вам.</div>'
-        f'{pin_form}'
+        f'{alt}</details>'
         f'<div class="actions">'
-        f'<button type="button" class="primary" onclick="cpSel(\'#glink-{nm}\',this)">'
-        f'Скопировать ссылку</button>'
         f'<a class="btn" href="/guide?{q}" target="_blank">Посмотреть памятку</a>'
         f'<a class="btn" href="/guide?{q}&amp;dl=1">Скачать файлом</a>'
         f'<form method="post" action="/act"><input type="hidden" name="op" value="share_stop">'
