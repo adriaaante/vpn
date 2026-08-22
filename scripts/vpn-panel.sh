@@ -10,7 +10,15 @@
 set -uo pipefail
 SRV="${SRV:-root@89.46.238.74}"
 PORT="${PANEL_PORT:-8787}"
-BRANCH_GREP="${BRANCH_GREP:-claude}"
+# Какую ветку развернуть на сервере. По умолчанию — ТУ ЖЕ, что сейчас на маке:
+# раньше здесь стоял grep 'claude', а он берёт первую подходящую ПО АЛФАВИТУ, то
+# есть запросто чужую и старую. Симптом был бы обидный: «обновился, перезапустил,
+# а изменений нет» — и никакой ошибки, панель просто поднимала прежний код.
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LOCAL_BRANCH="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+[[ "$LOCAL_BRANCH" == "HEAD" ]] && LOCAL_BRANCH=""
+BRANCH_GREP="${BRANCH_GREP:-${LOCAL_BRANCH:-claude}}"
+echo "[*] Ветка для сервера: ${BRANCH_GREP}"
 
 URL="http://127.0.0.1:$PORT/"
 
@@ -22,7 +30,9 @@ echo "[*] Адрес (откроется сам): $URL"
 
 # Панель спрашивает PIN (печатается ниже при старте). Репозиторий на сервере
 # обновляем целиком по нужным каталогам: без assets логотип не доезжает.
-REMOTE="cd /root/vpn && git fetch -q origin && git checkout \$(git branch -r | grep -m1 '$BRANCH_GREP') -- scripts assets && PANEL_PORT='$PORT' python3 scripts/vpn-panel.py"
+REMOTE="cd /root/vpn && git fetch -q origin && B=\$(git branch -r | grep -m1 '$BRANCH_GREP' | tr -d ' ') && \
+[ -n \"\$B\" ] || { echo \"[!] На сервере не нашлась ветка по '$BRANCH_GREP' — обновить нечем.\"; exit 1; } && \
+echo \"[*] Разворачиваю \$B\" && git checkout \$B -- scripts assets && PANEL_PORT='$PORT' python3 scripts/vpn-panel.py"
 
 # Длинный SSH к зарубежному адресу иногда рвут на пути или он отваливается по
 # простою — тогда панель просто пропадала. Держим keepalive и переподключаемся,
