@@ -601,7 +601,17 @@ def qr_card(url, size=228, cap="Наведите камеру телефона �
             f'<div class="qrlogo">{logo_html()}</div>{inner}</div>')
 
 
-APP_URL = "https://apps.apple.com/app/id6673731168"
+# Приложения для гостя. sing-box — рекомендуемый (авто-failover по узлам +
+# kill-switch), Shadowrocket — запасной: проще и есть в РФ App Store, но узлы
+# переключаются вручную.
+APP_URL_SB = "https://apps.apple.com/app/id6673731168"   # sing-box VT
+APP_URL_SR = "https://apps.apple.com/app/id932747118"    # Shadowrocket
+PBKF = os.environ.get("PBKF", "/etc/sing-box/reality_public_key.txt")
+# Домены-прикрытия (decoy), на которые может переключить сервер. Тот же список, что
+# у decoy-monitor.sh — так активный decoy всегда есть среди узлов для Shadowrocket
+# и его получится пометить «активен сейчас».
+DECOYS = ["www.apple.com", "www.cloudflare.com", "dl.google.com",
+          "addons.mozilla.org", "www.icloud.com", "www.samsung.com"]
 
 GUIDE_CSS = """
 :root{--bg:#0c0e12;--card:#161a22;--card2:#1c212c;--line:#262c39;--fg:#eef1f7;
@@ -661,6 +671,47 @@ border:1px solid var(--line);color:var(--fg);cursor:pointer}
 .pad button.sec{font-size:14px;color:var(--dim)}
 .err{color:var(--dim);font-size:12.5px;min-height:18px;margin-top:14px}
 
+/* Выбор приложения — вкладки на ЧИСТОМ CSS (без JS): памятку показывают через
+   innerHTML после расшифровки ПИНом, а innerHTML не выполняет <script>. Радио +
+   `:checked ~` такую вставку переживают, скрипт бы не запустился. */
+.apptabs .tabradio{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.opts{display:grid;gap:12px;margin:0 0 20px}
+.opt{position:relative;display:flex;gap:14px;align-items:center;cursor:pointer;
+background:var(--card2);border:1.5px solid var(--line);border-radius:16px;padding:15px 16px;
+transition:border-color .15s,box-shadow .15s}
+.opt .ic{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;
+font-size:22px;background:var(--card)}
+.opt .t{flex:1;min-width:0}
+.opt .t b{display:block;font-size:15.5px}
+.opt .t span{display:block;color:var(--dim);font-size:12.5px;margin-top:2px}
+.opt .pick{flex:none;width:23px;height:23px;border-radius:50%;border:2px solid var(--line);
+display:grid;place-items:center;color:#fff;transition:all .15s}
+.opt .badge{position:absolute;top:-9px;right:14px;font-size:10.5px;font-weight:700;
+letter-spacing:.02em;background:var(--ok);color:#04130d;padding:3px 9px;border-radius:999px}
+.opt .badge.grey{background:var(--card2);color:var(--dim);border:1px solid var(--line);font-weight:600}
+#app-sb:checked~.opts .opt-sb,#app-sr:checked~.opts .opt-sr{border-color:var(--accent);
+box-shadow:0 0 0 4px rgba(91,141,255,.16)}
+#app-sb:checked~.opts .opt-sb .pick,#app-sr:checked~.opts .opt-sr .pick{
+background:var(--accent);border-color:var(--accent)}
+#app-sb:checked~.opts .opt-sb .pick::after,#app-sr:checked~.opts .opt-sr .pick::after{
+content:"✓";font-size:13px;font-weight:800}
+.panel{display:none}
+#app-sb:checked~.panels .panel-sb,#app-sr:checked~.panels .panel-sr{display:block}
+.panel>h2:first-child{margin-top:0}
+.note{font-size:13px;border-radius:12px;padding:11px 14px;margin:0 0 16px;line-height:1.5}
+.note.ok{background:rgba(65,209,155,.1);color:var(--ok)}
+.note.warn{background:rgba(240,164,65,.1);color:#f0a441}
+/* Узлы для Shadowrocket: активный крупно, запасные — компактной сеткой. */
+.node{border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;
+background:var(--card2)}
+.node.live{border-color:var(--ok)}
+.node .nh{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+.node .nn{font-weight:600;font-size:14px}
+.node .badge{font-size:10px;font-weight:700;color:#04130d;background:var(--ok);
+padding:2px 8px;border-radius:999px}
+.node .qrtile{margin:0 auto 11px}
+.node .link{margin:0}
+.sect-note{color:var(--dim);font-size:12.5px;margin:18px 0 10px}
 
 /* Кнопки «сохранить в PDF» в памятке нет намеренно, но напечатать страницу
    браузер даёт всегда — пусть это хотя бы выглядит прилично и не жрёт тонер. */
@@ -670,10 +721,11 @@ border:1px solid var(--line);color:var(--fg);cursor:pointer}
  .card,.link,code{background:#f4f5f8;border-color:#dfe3ea;color:#111}
  .qrcard{background:#f4f5f8;border-color:#dfe3ea}
  .steps li:before{background:#eef0f4;border-color:#dfe3ea;color:#555}
- .lead,.dim,.qrcap,ul.plain,.foot,.steps .sub{color:#555}
+ .lead,.dim,.qrcap,ul.plain,.foot,.steps .sub,.opt .t span{color:#555}
  svg.logo path,svg.logo rect{fill:#111}
  h1{border-color:#dfe3ea}
  header{border-color:#dfe3ea}
+ .opt,.node{background:#f4f5f8;border-color:#dfe3ea}
 }
 """
 
@@ -684,6 +736,51 @@ def deep_link(url, name):
     имя профиля — во фрагменте после #."""
     return ("sing-box://import-remote-profile?url="
             + urllib.parse.quote(url, safe="") + "#" + urllib.parse.quote(name))
+
+
+def decoy_label(sni):
+    """Человекочитаемое имя узла из домена-прикрытия: www.apple.com -> Apple."""
+    parts = [p for p in sni.split(".") if p not in ("www", "dl", "addons")]
+    core = parts[0] if parts else sni
+    return {"icloud": "iCloud"}.get(core, core[:1].upper() + core[1:])
+
+
+def reality_params():
+    """Параметры Reality для сборки vless://-ссылок (Shadowrocket): публичный ключ,
+    short_id, flow. Домены руками не печатаем (грабля №1) — читаем из живого конфига.
+    Возвращает None, если чего-то нет (тогда Shadowrocket-вкладка не строится)."""
+    pbk = _read(PBKF)
+    try:
+        c = json.load(open(CFG))
+        ib = next(i for i in c.get("inbounds", []) if i.get("type") == "vless")
+        sid = ib["tls"]["reality"]["short_id"]
+        sid = sid[0] if isinstance(sid, list) else sid
+        flow = next((u["flow"] for u in ib.get("users", []) if u.get("flow")), "")
+    except (OSError, json.JSONDecodeError, StopIteration, KeyError):
+        return None
+    if not (pbk and sid):
+        return None
+    return {"pbk": pbk, "sid": str(sid), "flow": flow}
+
+
+def vless_link(uuid, host, sni, label, rp, port=443):
+    """Ссылка vless:// для импорта в Shadowrocket (по QR или из буфера). Содержит
+    учётные данные ЭТОГО гостя (его uuid + общий публичный ключ) — те же, что и в
+    remote-профиле sing-box, поэтому ничего лишнего гостю не раскрывает."""
+    q = [("encryption", "none")]
+    if rp.get("flow"):
+        q.append(("flow", rp["flow"]))
+    q += [("security", "reality"), ("sni", sni), ("fp", "chrome"),
+          ("pbk", rp["pbk"]), ("sid", rp["sid"]), ("type", "tcp")]
+    return (f"vless://{uuid}@{host}:{port}?{urllib.parse.urlencode(q)}"
+            f"#{urllib.parse.quote(label)}")
+
+
+def qr_tile(text, size=140):
+    """Только белая плитка с QR (без фирменной карточки/логотипа) — для сетки узлов
+    Shadowrocket. Пусто, если на сервере нет qrencode (тогда рядом остаётся ссылка)."""
+    svg = qr_svg(text)
+    return f'<div class="qrtile" style="--qr:{size}px">{svg}</div>' if svg else ""
 
 
 # ПИН на памятку: внутри файла лежит не ссылка, а шифртекст — без ПИНа из него
@@ -873,32 +970,113 @@ def guide_html(name):
     deep = deep_link(url, name)
     pin = str(u.get("guide_pin") or "")
 
-    access = f"""<div class="split">
-  <div class="col" style="flex:0 0 auto">{qr_card(deep, cap="")}</div>
-  <div class="col">
-    <h2>Что делать</h2>
+    # --- вкладка sing-box (рекомендуемая): remote-профиль с авто-failover ---
+    sb_panel = f"""<h2>Приложение sing-box</h2>
+    <div class="note ok">Рекомендуем: приложение само переключается на запасной узел,
+    если основной заблокируют, и умеет kill-switch — не пускает трафик мимо туннеля.</div>
+    <div class="split">
+      <div class="col" style="flex:0 0 auto">{qr_card(deep, cap="Код открывает приложение")}</div>
+      <div class="col">
+        <ol class="steps">
+          <li><b>Установите приложение sing-box VT</b>
+            <div class="sub">iPhone, iPad и Mac — App Store, разработчик VIRAL TECH INC.:
+            <a href="{APP_URL_SB}">{APP_URL_SB}</a>. Бесплатное. Пока его нет, код
+            сканировать нечем.</div>
+            <div class="sub">Нет в российском App Store — смените страну аккаунта:
+            Настройки → ваше имя → Медиа и покупки → Просмотреть → Страна или регион.
+            Подойдёт любая; карта для бесплатного приложения не нужна.</div></li>
+          <li><b>Наведите камеру на код</b>
+            <div class="sub">Телефон предложит открыть в sing-box — согласитесь.
+            В приложении нажмите <b>Import</b>, затем <b>Create</b>. Галочку
+            <i>Auto update</i> и интервал <i>60</i> оставьте как есть.</div></li>
+          <li><b>Не предложил открыть приложение — добавьте вручную</b>
+            <div class="sub">Вкладка Profiles → «+» → Type: <i>Remote</i> →
+            вставьте адрес в поле URL → Create.</div>
+            <div class="link">{html.escape(url)}</div></li>
+          <li><b>Включите переключатель на вкладке Dashboard</b>
+            <div class="sub">Первый раз система попросит разрешение на VPN-профиль —
+            согласитесь. Дальше всё одной кнопкой. Проверка на <code>ipinfo.io</code>:
+            страна должна быть Латвия (LV).</div></li>
+        </ol>
+      </div>
+    </div>"""
+
+    # --- вкладка Shadowrocket: отдельные vless://-узлы (переключение вручную) ---
+    rp = reality_params()
+    uuid = u.get("uuid", "")
+    if rp and uuid:
+        cur = st.get("decoy", "")
+        domains = list(DECOYS)
+        if cur and cur not in domains and "[" not in cur and len(cur) < 40:
+            domains.insert(0, cur)
+        # активный узел — первым и крупно (с QR), остальные — про запас списком.
+        # Запасным QR не рисуем намеренно: 6 QR раздули бы страницу до мегабайтов
+        # (а под ПИНом ещё и замедлили бы расшифровку в браузере). Shadowrocket
+        # умеет добавлять узел из буфера — ссылки достаточно.
+        domains.sort(key=lambda d: d != cur)
+
+        def node(sni, live, with_qr):
+            link = vless_link(uuid, host, sni, f"LV-{decoy_label(sni)}", rp)
+            badge = '<span class="badge">активен сейчас</span>' if live else ""
+            qr = qr_tile(link, 176) if with_qr else ""
+            return (f'<div class="node{" live" if live else ""}">'
+                    f'<div class="nh"><span class="nn">Латвия · {html.escape(decoy_label(sni))}</span>{badge}</div>'
+                    f'{qr}'
+                    f'<div class="link">{html.escape(link)}</div></div>')
+
+        active = domains[0]
+        rest = domains[1:]
+        nodes_html = node(active, active == cur, with_qr=True)
+        if rest:
+            nodes_html += ('<div class="sect-note">Запасные узлы — если основной '
+                           'перестанет открываться, добавьте любой (скопируйте ссылку → '
+                           'в Shadowrocket «+» → Add from clipboard):</div>'
+                           + "".join(node(d, False, with_qr=False) for d in rest))
+    else:
+        nodes_html = ('<div class="note warn">Ссылки для Shadowrocket сейчас собрать не '
+                      'удалось — воспользуйтесь вариантом sing-box слева.</div>')
+
+    sr_panel = f"""<h2>Приложение Shadowrocket</h2>
+    <div class="note warn">Автопереключения узлов нет. Если перестанет подключаться —
+    выберите вручную другой узел (лучше тот, что помечен «активен сейчас»).</div>
     <ol class="steps">
-      <li><b>Сначала установите приложение sing-box VT</b>
-        <div class="sub">iPhone, iPad и Mac — App Store, разработчик VIRAL TECH INC.:
-        <a href="{APP_URL}">{APP_URL}</a>. Бесплатное. Пока его нет, код сканировать
-        нечем.</div>
-        <div class="sub">Если в российском App Store приложения нет, смените страну
-        аккаунта: Настройки → ваше имя → Медиа и покупки → Просмотреть → Страна
-        или регион. Подойдёт любая другая страна; карта для бесплатного приложения
-        не нужна — способ оплаты можно указать «Нет».</div></li>
-      <li><b>Наведите камеру на код</b>
-        <div class="sub">Телефон предложит открыть в sing-box — согласитесь.
-        В приложении нажмите <b>Import</b>, затем <b>Create</b>. Галочку
-        <i>Auto update</i> и интервал <i>60</i> оставьте как есть.</div></li>
-      <li><b>Не предложил открыть приложение — добавьте вручную</b>
-        <div class="sub">Вкладка Profiles → «+» → Type: <i>Remote</i> →
-        вставьте адрес в поле URL → Create.</div>
-        <div class="link">{html.escape(url)}</div></li>
-      <li><b>Включите переключатель на вкладке Dashboard</b>
-        <div class="sub">Первый раз система попросит разрешение на VPN-профиль —
-        согласитесь. Дальше всё включается одной кнопкой. Проверить можно на
-        <code>ipinfo.io</code>: страна должна быть Латвия (LV).</div></li>
+      <li><b>Установите Shadowrocket</b>
+        <div class="sub">App Store: <a href="{APP_URL_SR}">{APP_URL_SR}</a>. Платное
+        (~$3), есть в российском App Store.</div></li>
+      <li><b>Отсканируйте QR активного узла</b>
+        <div class="sub">В приложении значок <b>сканера</b> слева вверху → наведите на
+        QR ниже. Или скопируйте ссылку — Shadowrocket подхватит её из буфера
+        (кнопка «+» → Add from clipboard).</div></li>
+      <li><b>Добавьте и запасные узлы</b>
+        <div class="sub">Если основной перестанет открываться — переключитесь на
+        другой из списка ниже.</div></li>
+      <li><b>Включите переключатель вверху</b>
+        <div class="sub">Затем Settings → <b>Global Routing → Proxy</b>, чтобы весь
+        трафик шёл через VPN. Проверка на <code>ipinfo.io</code>: страна Латвия (LV).</div></li>
     </ol>
+    <h2>Узлы — добавьте активный, остальные про запас</h2>
+    {nodes_html}"""
+
+    access = f"""<div class="apptabs">
+  <input type="radio" name="app" id="app-sb" class="tabradio" checked>
+  <input type="radio" name="app" id="app-sr" class="tabradio">
+  <div class="opts">
+    <label class="opt opt-sb" for="app-sb">
+      <span class="badge">Рекомендовано</span>
+      <span class="ic">🧭</span>
+      <span class="t"><b>sing-box</b><span>Сам переключает узлы и держит kill-switch. Надёжнее.</span></span>
+      <span class="pick"></span>
+    </label>
+    <label class="opt opt-sr" for="app-sr">
+      <span class="badge grey">РФ App Store</span>
+      <span class="ic">🚀</span>
+      <span class="t"><b>Shadowrocket</b><span>Проще и продаётся в российском App Store.</span></span>
+      <span class="pick"></span>
+    </label>
+  </div>
+  <div class="panels">
+    <div class="panel panel-sb">{sb_panel}</div>
+    <div class="panel panel-sr">{sr_panel}</div>
   </div>
 </div>"""
 
@@ -925,7 +1103,8 @@ def guide_html(name):
 <header>{logo_html()}<h1>Доступ к VPN</h1></header>
 
 <p class="lead">Личный доступ для <b>{nm}</b>. Российские сайты идут напрямую и не
-тормозят, зарубежные — через сервер в Латвии. Настройка — пара минут.</p>
+тормозят, зарубежные — через сервер в Латвии. Выберите приложение — ниже появится
+инструкция именно для него. Настройка — пара минут.</p>
 
 {body}
 
@@ -969,12 +1148,14 @@ def share_modal(name, opened=True):
         "Отправьте человеку ссылку на памятку — она откроется у него в браузере "
         "как страница. Файлом тоже можно, но во встроенном просмотре мессенджера "
         "цифры кода не нажимаются.",
-        f'<div class="split"><div class="col qrcol">{qr_card(deep_link(url, name), 196, cap="Код открывает приложение", offer_install=True)}</div>'
+        f'<div class="split"><div class="col qrcol">{qr_card(deep_link(url, name), 196, cap="Код открывает sing-box", offer_install=True)}</div>'
         f'<div class="col"><ol class="steps">'
-        f'<li><b>Приложение sing-box VT</b>'
-        f'<div class="sub">App Store, бесплатное. Для iPhone, iPad и Mac.</div></li>'
-        f'<li><b>Камера на код → Import → Create</b>'
-        f'<div class="sub">Или вручную: New Profile → Type: Remote → ссылка в поле URL.</div></li>'
+        f'<li><b>В памятке человек сам выберет приложение</b>'
+        f'<div class="sub">Два варианта: <b>sing-box</b> (рекомендуется — авто-переключение '
+        f'узлов и kill-switch) или <b>Shadowrocket</b> (проще, есть в РФ App Store).</div></li>'
+        f'<li><b>Под выбором — готовая инструкция и QR</b>'
+        f'<div class="sub">sing-box: код выше → Import → Create. Shadowrocket: QR активного '
+        f'узла + запасные ссылки.</div></li>'
         f'<li><b>Включить переключатель</b>'
         f'<div class="sub">Система спросит разрешение на VPN — согласиться.</div></li>'
         f'</ol></div></div>'
