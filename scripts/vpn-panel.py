@@ -183,6 +183,47 @@ def server_status():
     }
 
 
+COUNTRY_RU = {"LV": "Латвия", "EE": "Эстония", "LT": "Литва", "FI": "Финляндия",
+              "SE": "Швеция", "NL": "Нидерланды", "DE": "Германия", "FR": "Франция",
+              "PL": "Польша", "GB": "Британия", "US": "США", "RU": "Россия"}
+# Город приходит по-английски — рядом с русской страной это смотрится небрежно.
+# Список короткий: только те города, куда сервер реально может переехать.
+CITY_RU = {"Riga": "Рига", "Tallinn": "Таллин", "Vilnius": "Вильнюс",
+           "Helsinki": "Хельсинки", "Stockholm": "Стокгольм", "Amsterdam": "Амстердам",
+           "Frankfurt am Main": "Франкфурт", "Frankfurt": "Франкфурт",
+           "Warsaw": "Варшава", "Paris": "Париж", "London": "Лондон", "Vienna": "Вена"}
+_geo = {}
+
+
+def flag(cc):
+    """Флаг страны из её кода — рисуется шрифтом, картинки не нужны."""
+    cc = (cc or "").strip().upper()
+    if len(cc) != 2 or not cc.isalpha():
+        return ""
+    return chr(0x1F1E6 + ord(cc[0]) - 65) + chr(0x1F1E6 + ord(cc[1]) - 65)
+
+
+def server_geo(ip):
+    """Где физически стоит сервер и чей это провайдер. Спрашиваем с самого сервера
+    и запоминаем: адрес и локация меняются раз в год, а окно открывают часто —
+    ходить в сеть на каждый показ незачем."""
+    if not ip or ip in ("—", ""):
+        return {}
+    if ip in _geo:
+        return _geo[ip]
+    try:
+        d = json.loads(sh(f"curl -fsSL --max-time 5 https://ipinfo.io/{ip}/json") or "{}")
+    except json.JSONDecodeError:
+        d = {}
+    org = str(d.get("org", ""))
+    info = {"city": str(d.get("city", "")), "country": str(d.get("country", "")),
+            # org приходит как «AS57494 EDIS GLOBAL SRL» — номер сети человеку не нужен
+            "org": re.sub(r"^AS\d+\s+", "", org), "tz": str(d.get("timezone", ""))}
+    if info["city"] or info["country"]:
+        _geo[ip] = info
+    return info
+
+
 def domain_info():
     info = {}
     try:
@@ -421,10 +462,14 @@ margin-top:6px;display:block}
 .mask{position:fixed;inset:0;background:rgba(6,8,11,.74);backdrop-filter:blur(3px);
 display:none;align-items:flex-start;justify-content:center;padding:6vh 16px;z-index:50}
 .mask.open{display:flex}
-.modal{background:var(--card);border:1px solid var(--line);border-radius:16px;
+.modal{position:relative;background:var(--card);border:1px solid var(--line);border-radius:16px;
 width:min(760px,100%);padding:22px 24px;max-height:86vh;overflow:auto;
 box-shadow:0 24px 60px rgba(0,0,0,.55)}
-.modal h3{margin:0 0 4px;font-size:17px;font-weight:640}
+.modal h3{margin:0 0 4px;font-size:17px;font-weight:640;padding-right:36px}
+.modal .x{position:absolute;top:14px;right:14px;width:30px;height:30px;padding:0;
+display:grid;place-items:center;font-size:13px;line-height:1;color:var(--faint);
+background:transparent;border:1px solid transparent;border-radius:9px;cursor:pointer}
+.modal .x:hover{background:var(--card2);border-color:var(--line);color:var(--fg)}
 .modal .sub{color:var(--dim);font-size:13px;margin:0 0 18px}
 .modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:22px}
 .hint{color:var(--faint);font-size:12px;margin-top:8px;line-height:1.5}
@@ -493,7 +538,11 @@ function cpSel(sel,btn){var e=document.querySelector(sel);if(e)cpText(e.textCont
 
 
 def modal(mid, title, sub, body, opened=False):
+    """Крестик рисуется ЗДЕСЬ, а не в каждом окне: так он гарантированно на одном
+    месте и одного вида во всех окнах. Escape и клик по фону тоже закрывают."""
     return (f'<div class="mask{" open" if opened else ""}" id="{mid}"><div class="modal">'
+            f'<button type="button" class="x" aria-label="Закрыть" '
+            f'onclick="closeM(\'{mid}\')">&#10005;</button>'
             f'<h3>{title}</h3><p class="sub">{sub}</p>{body}</div></div>')
 
 
@@ -582,7 +631,7 @@ def analytics_modal():
         f'Число прыгает — это нормально.<br>Счётчики трафика считаются с последнего включения '
         f'сервера ({html.escape(a["iface"])}), а не за месяц.</div>'
         f'{chart}'
-        f'<div class="actions"><button onclick="closeM(\'analytics\')">Закрыть</button></div>')
+        )
 
 
 def links_modal():
@@ -600,8 +649,7 @@ def links_modal():
         "links", "Ссылки на настройки", "Работают, только пока идёт выдача конфига.",
         "".join(rows) +
         '<div class="hint">Ссылка «по имени» продолжит работать даже после смены адреса '
-        'сервера — берите её. Друзьям выдаётся только «умный» режим.</div>'
-        '<div class="actions"><button onclick="closeM(\'links\')">Закрыть</button></div>')
+        'сервера — берите её. Друзьям выдаётся только «умный» режим.</div>')
 
 
 def server_modal():
@@ -622,11 +670,20 @@ def server_modal():
     if dom.get("dns_url"):
         links.append(f'<a href="{html.escape(dom["dns_url"])}" target="_blank">изменить DNS-запись</a>')
     nports = len([p for p in st["ports"].split() if p.strip()])
+    geo = server_geo(st["ip"])
+    country = COUNTRY_RU.get(geo.get("country", ""), geo.get("country", ""))
+    city = CITY_RU.get(geo.get("city", ""), geo.get("city", ""))
+    where = " · ".join(x for x in (city, country) if x) or "—"
+    fl = flag(geo.get("country", ""))
     return modal(
-        "server", "Сервер и домен", "Здоровье сервера и сроки оплаты домена.",
+        "server", "Сервер и домен", "Где стоит сервер, здоровье и сроки оплаты домена.",
         f'<div class="facts">'
         f'<div class="fact"><b>сервер VPN</b>'
         f'<span class="pill {"on" if alive else "bad"}">{"работает" if alive else "не работает"}</span></div>'
+        f'<div class="fact"><b>где находится</b>'
+        f'<span>{fl + " " if fl else ""}{html.escape(where)}</span></div>'
+        f'<div class="fact"><b>провайдер</b><span>{html.escape(geo.get("org") or "—")}</span></div>'
+        f'<div class="fact"><b>часовой пояс сервера</b><span>{html.escape(geo.get("tz") or "—")}</span></div>'
         f'<div class="fact"><b>запасные каналы</b><span>{nports}: {html.escape(st["ports"])}</span></div>'
         f'<div class="fact"><b>адрес сервера</b><span>{html.escape(st["ip"])}</span></div>'
         f'<div class="fact"><b>маскируется под сайт</b><span>{html.escape(st["decoy"])}</span></div>'
@@ -636,13 +693,15 @@ def server_modal():
         f'<div class="fact"><b>регистратор</b><span>{html.escape(dom.get("registrar","—"))}</span></div>'
         f'<div class="fact"><b>работает без перезагрузки</b><span>{html.escape(st["uptime"])}</span></div>'
         f'</div>'
-        f'<div class="hint">Запасные каналы — это разные «двери» в сервер. Если одну перекроют, '
+        f'<div class="hint">Страна сервера — это страна, которую видят зарубежные сайты '
+        f'у вас и у ваших людей.<br>'
+        f'Запасные каналы — это разные «двери» в сервер. Если одну перекроют, '
         f'устройства сами уйдут в другую, и вы этого не заметите.<br>'
         f'«Маскируется под сайт» — под каким известным сайтом сервер прячет соединение, '
         f'чтобы его не приняли за VPN.</div>'
         f'{"<div class=hint>" + " · ".join(links) + "</div>" if links else ""}'
         f'{qrencode_offer()}'
-        f'<div class="actions"><button onclick="closeM(\'server\')">Закрыть</button></div>')
+        )
 
 
 def qrencode_offer():
@@ -728,7 +787,7 @@ def nodes_modal(opened=False):
         f'<div class="actions">'
         f'<form method="post" action="/act"><input type="hidden" name="op" value="check_decoys">'
         f'<button class="primary"{" disabled" if check_running() else ""}>Проверить сейчас</button></form>'
-        f'<button onclick="closeM(\'nodes\')">Закрыть</button></div>', opened=opened)
+        f'</div>', opened=opened)
 
 
 def add_modal():
