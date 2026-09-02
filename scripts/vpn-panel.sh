@@ -35,7 +35,7 @@ echo "[*] Адрес (откроется сам): $URL"
 # обновляем целиком по нужным каталогам: без assets логотип не доезжает.
 REMOTE="cd /root/vpn && git fetch -q origin && B=\$(git branch -r | grep -m1 '$BRANCH_GREP' | tr -d ' ') && \
 [ -n \"\$B\" ] || { echo \"[!] На сервере не нашлась ветка по '$BRANCH_GREP' — обновить нечем.\"; exit 1; } && \
-echo \"[*] Разворачиваю \$B\" && git checkout \$B -- scripts assets && PANEL_PORT='$PORT' python3 scripts/vpn-panel.py"
+echo \"[*] Разворачиваю \$B\" && git checkout \$B -- scripts assets configs && PANEL_PORT='$PORT' python3 scripts/vpn-panel.py"
 
 # Прежний туннель мог остаться жить: терминал закрыли без Ctrl+C или связь
 # пропала, а ssh на маке продолжает держать локальный порт. Тогда новый ssh НЕ
