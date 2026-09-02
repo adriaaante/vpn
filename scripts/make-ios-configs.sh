@@ -39,18 +39,10 @@ def base():
     }]
     # macOS-специфику убираем: кэш и clash_api приложение задаёт само
     d.pop("experimental", None)
-    # Ядро sing-box в приложении iOS (sing-box VT) старше 1.12 и не понимает
-    # новый формат DNS (поле "type") и route.default_domain_resolver.
-    # Переводим DNS в легаси-формат (через "address") и убираем 1.12+ поля.
-    d["dns"] = {
-        "servers": [
-            {"tag": "dns-remote", "address": "https://1.1.1.1/dns-query", "detour": "proxy"}
-        ],
-        "strategy": "ipv4_only",
-        "reverse_mapping": True,
-        "final": "dns-remote"
-    }
-    d.get("route", {}).pop("default_domain_resolver", None)
+    # DNS и route.default_domain_resolver оставляем как в маковском конфиге — это
+    # новый формат (type/server), и ядро приложения (1.13, с 2026-09-02) требует
+    # именно его: устаревший формат (address: https://...) на нём FATAL при старте.
+    # Ядро ≤1.11 новый формат не понимает, совместить оба нельзя.
     return d
 
 def is_ru_direct(x):
