@@ -309,8 +309,12 @@ uuid/short_id/ключи выводятся как `sha256:xxxxxxxx`, свой I
 ## Домен и его срок
 
 `lv.pine-ledger.fyi` → A-запись на текущий IP сервера, TTL 600. Регистратор
-**Porkbun**, домен `pine-ledger.fyi` куплен 21.08.2026 на 2 года, **оплачен до
-21.08.2028**. Управление: https://porkbun.com/account/domains, DNS-записи там же.
+**Porkbun**, домен `pine-ledger.fyi` куплен 20.08.2026. По реестру (Details в
+Porkbun, проверено 2026-09-02) **срок до 20.08.2027**, а не 2028, как думали
+раньше; **Auto Renew включён** (~5,66 $ в год списывается сам). Управление:
+https://porkbun.com/account/domains, DNS-записи там же. **API Access у домена
+включён** (нужен `vpn-migrate.sh`); ключ API лежит только на маке в
+`configs/porkbun-api.local.txt` (gitignored), в репозиторий и на сервер не попадает.
 Факты лежат в `/etc/sing-box/domain-info.json` — панель показывает срок и сама
 предупреждает, когда до продления меньше 90 дней (жёлтым) и 30 (красным).
 Имя сервера — в `/etc/sing-box/server-host.txt`, из него генератор берёт домен для
