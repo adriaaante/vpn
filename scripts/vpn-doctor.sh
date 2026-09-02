@@ -200,6 +200,17 @@ if [[ "$MODE" == "client" ]]; then
   echo "  TCP 443 (наш Reality) открыт : $P443"
   echo "  TCP 22  (SSH, не-TLS, тот же IP): $P22   <-- если 22 открыт, а 443 нет — режут порт, а не IP"
   echo "  наш выход в интернет: $(curl -s --max-time 8 https://ipinfo.io/country 2>/dev/null | tr -d '\n') / $(curl -s --max-time 8 https://ipinfo.io/org 2>/dev/null)"
+  # Утечка в обратную сторону: российские сайты должны видеть РОССИЙСКИЙ адрес
+  # (умный/selective режим), иначе банкам и госуслугам светится латвийский IP.
+  # yandex.ru отдаёт наш адрес как есть; сам адрес не печатаем — только страну/ASN.
+  ru_ip=$(curl -s --max-time 8 https://yandex.ru/internet/api/v0/ip 2>/dev/null | tr -d '"\n ')
+  if [[ "$ru_ip" =~ ^[0-9.]+$ ]]; then
+    ru_geo="$(curl -s --max-time 8 "https://ipinfo.io/$ru_ip/country" 2>/dev/null | tr -d '\n') / $(curl -s --max-time 8 "https://ipinfo.io/$ru_ip/org" 2>/dev/null)"
+    mode_now=$(cat /etc/sing-box/mode 2>/dev/null || echo '?')
+    echo "  yandex.ru видит нас как: $ru_geo   (режим $mode_now: full/selective ждём RU, strict — LV)"
+  else
+    echo "  yandex.ru видит нас как: ?  (не ответил — если VPN включён, рос. путь сломан)"
+  fi
 
   echo
   echo "=== TLS-ХЕНДШЕЙК ==="

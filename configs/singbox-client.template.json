@@ -13,6 +13,7 @@
       }
     ],
     "strategy": "ipv4_only",
+    "reverse_mapping": true,
     "final": "dns-remote"
   },
   "inbounds": [
@@ -261,6 +262,7 @@
         "domain_suffix": [
           ".ru",
           ".рф",
+          ".xn--p1ai",
           "mail.ru",
           "yandex.net",
           "vk.com",

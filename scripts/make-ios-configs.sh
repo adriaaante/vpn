@@ -47,6 +47,7 @@ def base():
             {"tag": "dns-remote", "address": "https://1.1.1.1/dns-query", "detour": "proxy"}
         ],
         "strategy": "ipv4_only",
+        "reverse_mapping": True,
         "final": "dns-remote"
     }
     d.get("route", {}).pop("default_domain_resolver", None)
@@ -56,7 +57,7 @@ def is_ru_direct(x):
     if x.get("outbound") != "direct": return False
     if x.get("rule_set") == "geoip-ru": return True
     ds = x.get("domain_suffix")
-    if isinstance(ds, list) and any(s in (".ru", ".рф") for s in ds): return True
+    if isinstance(ds, list) and any(s in (".ru", ".рф", ".xn--p1ai") for s in ds): return True
     return False
 
 # FULL — как на Mac: зарубеж→Латвия, RU→напрямую

@@ -88,7 +88,7 @@ def base():
         "mtu":1358,"auto_route":True,"strict_route":True,"stack":"gvisor","endpoint_independent_nat":True}]
     d.pop("experimental",None)
     d["dns"]={"servers":[{"tag":"dns-remote","address":"https://1.1.1.1/dns-query","detour":"proxy"}],
-              "strategy":"ipv4_only","final":"dns-remote"}
+              "strategy":"ipv4_only","reverse_mapping":True,"final":"dns-remote"}
     if HOST:
         # Имя сервера резолвим МИМО туннеля, иначе кольцо: подключиться нельзя, пока
         # имя не разрешено, а разрешить нечем. detour обязан вести на НЕПУСТОЙ
@@ -102,7 +102,7 @@ def is_ru_direct(x):
     if x.get("outbound")!="direct": return False
     if x.get("rule_set")=="geoip-ru": return True
     ds=x.get("domain_suffix")
-    if isinstance(ds,list) and any(s in (".ru",".рф") for s in ds): return True
+    if isinstance(ds,list) and any(s in (".ru",".рф",".xn--p1ai") for s in ds): return True
     return False
 full=base()
 strict=base(); r=strict["route"]

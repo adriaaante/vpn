@@ -118,7 +118,7 @@ def is_ru_direct(x):
     if x.get("outbound")!="direct": return False
     if x.get("rule_set")=="geoip-ru": return True
     ds=x.get("domain_suffix")
-    if isinstance(ds,list) and any(s in (".ru",".рф") for s in ds): return True
+    if isinstance(ds,list) and any(s in (".ru",".рф",".xn--p1ai") for s in ds): return True
     return False
 r["rules"]=[x for x in r.get("rules",[]) if not is_ru_direct(x)]
 r["rule_set"]=[x for x in r.get("rule_set",[]) if x.get("tag")!="geoip-ru"]
