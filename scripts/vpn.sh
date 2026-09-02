@@ -40,10 +40,19 @@ proto_now() { curl -fsS --max-time 3 -H "Authorization: Bearer $(clash_secret)" 
 try: print(json.load(sys.stdin).get("now",""))
 except Exception: print("")' 2>/dev/null; }
 
+# IP и страна — из ОДНОГО ответа ipinfo. Два отдельных запроса во время подъёма
+# туннеля уходят разными путями (первый ещё напрямую, второй уже в туннель) и
+# печатали «188.x.x.x (LV)»: российский адрес с латвийской страной.
+ipinfo_pair() {
+  curl -fsS --max-time 6 https://ipinfo.io/json 2>/dev/null | python3 -c 'import json,sys
+try:
+    d=json.load(sys.stdin); print(d.get("ip","?"), d.get("country","?"))
+except Exception: print("? ?")' 2>/dev/null || echo "? ?"
+}
+
 show_ip() {
   local ip geo
-  ip="$(curl -fsS --max-time 6 https://ipinfo.io/ip 2>/dev/null || echo '?')"
-  geo="$(curl -fsS --max-time 6 https://ipinfo.io/country 2>/dev/null || echo '?')"
+  read -r ip geo < <(ipinfo_pair)
   if [[ "$ip" == "?" ]]; then
     echo "Внешний IP: не узнать — интернет наружу не идёт (туннель поднялся, но не работает)"
   else
@@ -90,8 +99,7 @@ full_status() {
 
   # IP/страна
   local ip geo
-  ip="$(curl -fsS --max-time 6 https://ipinfo.io/ip 2>/dev/null || echo '?')"
-  geo="$(curl -fsS --max-time 6 https://ipinfo.io/country 2>/dev/null || echo '?')"
+  read -r ip geo < <(ipinfo_pair)
   if [ "$geo" = "LV" ]; then echo "  Внешний IP:   $ip ($geo) ✓ Латвия"
   elif [ "$geo" = "RU" ]; then echo "  Внешний IP:   $ip ($geo) ⚠️ Россия — туннель не активен!"
   else echo "  Внешний IP:   $ip ($geo)"; fi
