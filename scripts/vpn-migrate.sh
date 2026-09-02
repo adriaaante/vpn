@@ -41,7 +41,7 @@ if [[ "$(resolve)" == "$NEW" ]]; then
 elif [[ -s "$KEYS" ]]; then
   API=$(sed -n 1p "$KEYS" | tr -d '[:space:]'); SEC=$(sed -n 2p "$KEYS" | tr -d '[:space:]')
   pb(){ # pb <path> <json-доп.поля>
-    curl -fsS --max-time 20 -H 'Content-Type: application/json' \
+    curl -sS --max-time 20 -H 'Content-Type: application/json' \
       -d "{\"apikey\":\"$API\",\"secretapikey\":\"$SEC\"${2:+,$2}}" \
       "https://api.porkbun.com/api/json/v3/$1" 2>&1
   }
