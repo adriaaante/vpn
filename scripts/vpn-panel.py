@@ -679,6 +679,10 @@ def server_modal():
         links.append(f'<a href="{html.escape(dom["dns_url"])}" target="_blank">изменить DNS-запись</a>')
     nports = len([p for p in st["ports"].split() if p.strip()])
     geo = server_geo(st["ip"])
+    # Автопереезд по DNS (ip-sync.timer): владельцу важно видеть, что он включён —
+    # иначе при следующей смене IP снова придётся идти через VNC.
+    sync_on = sh("systemctl is-active ip-sync.timer") == "active"
+    sync_last = sh("journalctl -u ip-sync -n 1 --no-pager -o cat 2>/dev/null")
     country = COUNTRY_RU.get(geo.get("country", ""), geo.get("country", ""))
     city = CITY_RU.get(geo.get("city", ""), geo.get("city", ""))
     where = " · ".join(x for x in (city, country) if x) or "—"
@@ -692,6 +696,8 @@ def server_modal():
         f'<span>{fl + " " if fl else ""}{html.escape(where)}</span></div>'
         f'<div class="fact"><b>провайдер</b><span>{html.escape(geo.get("org") or "—")}</span></div>'
         f'<div class="fact"><b>часовой пояс сервера</b><span>{html.escape(geo.get("tz") or "—")}</span></div>'
+        f'<div class="fact"><b>автопереезд по DNS</b>'
+        f'<span class="pill {"on" if sync_on else "off"}">{"включён" if sync_on else "не установлен"}</span></div>'
         f'<div class="fact"><b>запасные каналы</b><span>{nports}: {html.escape(st["ports"])}</span></div>'
         f'<div class="fact"><b>адрес сервера</b><span>{html.escape(st["ip"])}</span></div>'
         f'<div class="fact"><b>маскируется под сайт</b><span>{html.escape(st["decoy"])}</span></div>'
@@ -703,6 +709,9 @@ def server_modal():
         f'</div>'
         f'<div class="hint">Страна сервера — это страна, которую видят зарубежные сайты '
         f'у вас и у ваших людей.<br>'
+        f'Автопереезд: сменили IP у хостера → на маке <code>bash scripts/vpn-migrate.sh '
+        f'&lt;новый-IP&gt;</code> — сервер подхватит адрес из DNS сам, через VNC ходить не надо.'
+        f'{(" Последняя запись: " + html.escape(sync_last)) if sync_last else ""}<br>'
         f'Запасные каналы — это разные «двери» в сервер. Если одну перекроют, '
         f'устройства сами уйдут в другую, и вы этого не заметите.<br>'
         f'«Маскируется под сайт» — под каким известным сайтом сервер прячет соединение, '
