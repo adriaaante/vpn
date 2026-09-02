@@ -87,22 +87,16 @@ def base():
     d["inbounds"]=[{"type":"tun","tag":"tun-in","address":["172.19.0.1/30","fdfe:dcba:9876::1/126"],
         "mtu":1358,"auto_route":True,"strict_route":True,"stack":"gvisor","endpoint_independent_nat":True}]
     d.pop("experimental",None)
-    # DNS берём из шаблона КАК ЕСТЬ — это новый формат (type/server +
-    # route.default_domain_resolver). Раньше здесь собирался устаревший формат
-    # (address: https://...), потому что ядро в приложении было старым. 2026-09-02
-    # приложение обновилось до ядра 1.13, и такой профиль перестал стартовать:
-    # «legacy DNS servers is deprecated … FATAL» — на телефоне sing-box молча не
-    # поднимался, а Shadowrocket (другое приложение) работал. Новый формат ядро
-    # ≤1.11 не понимает (unknown field "type"), совместить оба нельзя — держим
-    # тот, что у актуального приложения. Проверка: sing-box check без переменных
-    # ENABLE_DEPRECATED_* должен проходить чисто.
+    d["dns"]={"servers":[{"tag":"dns-remote","address":"https://1.1.1.1/dns-query","detour":"proxy"}],
+              "strategy":"ipv4_only","reverse_mapping":True,"final":"dns-remote"}
     if HOST:
         # Имя сервера резолвим МИМО туннеля, иначе кольцо: подключиться нельзя, пока
         # имя не разрешено, а разрешить нечем. detour обязан вести на НЕПУСТОЙ
         # outbound — пустой "direct" sing-box отвергает при старте.
         d["outbounds"].append({"type":"direct","tag":"direct-dns","connect_timeout":"5s"})
-        d["dns"]["servers"].append({"type":"https","tag":"dns-bootstrap","server":"1.1.1.1","detour":"direct-dns"})
+        d["dns"]["servers"].append({"tag":"dns-bootstrap","address":"https://1.1.1.1/dns-query","detour":"direct-dns"})
         d["dns"]["rules"]=[{"domain":[HOST],"server":"dns-bootstrap"}]
+    d.get("route",{}).pop("default_domain_resolver",None)
     return d
 def is_ru_direct(x):
     if x.get("outbound")!="direct": return False
