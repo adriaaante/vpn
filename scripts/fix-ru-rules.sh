@@ -7,7 +7,8 @@
 #   cd ~/vpn && bash scripts/fix-ru-rules.sh
 #
 # Что правит (идемпотентно, можно гонять сколько угодно):
-#   1. К правилу RU→direct добавляет ".xn--p1ai" — это ".рф" в punycode. В TLS (SNI)
+#   1. К правилу RU→direct добавляет ".xn--p1ai" (это ".рф" в punycode), а также
+#      ".su", ".xn--80adxhks" (.москва) и ".xn--p1acf" (.рус). В TLS (SNI)
 #      домен всегда идёт в punycode, поэтому кириллическое ".рф" в правиле НЕ
 #      срабатывало и сайты .рф уходили через Латвию (проверено на sing-box 1.13.13).
 #   2. dns.reverse_mapping=true — sing-box запоминает, какому имени он отдал IP, и
@@ -30,10 +31,12 @@ rules=d.setdefault("route",{}).setdefault("rules",[])
 ru=[r for r in rules if r.get("outbound")=="direct" and ".ru" in (r.get("domain_suffix") or [])]
 if not ru:
     print("[!] Не нашёл правило RU→direct (domain_suffix с .ru) — это не умный режим?"); sys.exit(1)
+# .xn--p1ai = .рф, .xn--80adxhks = .москва, .xn--p1acf = .рус (в SNI только punycode)
+WANT=[".xn--p1ai",".su",".xn--80adxhks",".xn--p1acf"]
 for r in ru:
-    if ".xn--p1ai" not in r["domain_suffix"]:
-        i=r["domain_suffix"].index(".рф")+1 if ".рф" in r["domain_suffix"] else len(r["domain_suffix"])
-        r["domain_suffix"].insert(i,".xn--p1ai"); changed.append(".xn--p1ai в правило RU→direct")
+    ds=r["domain_suffix"]; i=ds.index(".рф")+1 if ".рф" in ds else len(ds)
+    for w in WANT:
+        if w not in ds: ds.insert(i,w); i+=1; changed.append(w+" в правило RU→direct")
 dns=d.setdefault("dns",{})
 if dns.get("reverse_mapping") is not True:
     dns["reverse_mapping"]=True; changed.append("dns.reverse_mapping=true")
