@@ -9,6 +9,8 @@
 #   bash scripts/vpn-users.sh enable ivan     # вернуть
 #   bash scripts/vpn-users.sh remove ivan     # удалить насовсем
 #   bash scripts/vpn-users.sh apply           # пересобрать конфиг из реестра
+#   bash scripts/vpn-users.sh broadcast [часы] # раздать СВЕЖИЙ профиль всем сразу и
+#                                             # закрыться, когда каждый скачал (по умолч. 24 ч)
 #
 # Источник правды — /etc/sing-box/users.json; из него собирается список users во
 # ВСЕХ vless-инбаундах (443/2053/8443), иначе человек отвалится при переезде на
@@ -131,19 +133,11 @@ PY
   return 0
 }
 
-share() { # собрать и раздать конфиг конкретного человека
-  local name="$1" uuid out
-  uuid="$(get_field "$name" uuid)"
-  [[ -n "$uuid" ]] || { echo "Нет такого пользователя: $name"; exit 1; }
-  [[ "$(get_field "$name" enabled)" == "True" ]] || echo "[!] $name сейчас ОТКЛЮЧЁН — конфиг соберётся, но работать не будет."
-  # Снимаем зависшую прошлую раздачу ДО сборки: её trap делает rm -rf своего
-  # каталога и иначе унёс бы уже готовые файлы (см. make-ios-configs-server.sh).
-  if ss -tln 2>/dev/null | grep -q ":8080 "; then pkill -f "http.server 8080" 2>/dev/null && sleep 2; fi
-  # Ссылка у каждого своя. Раньше все получали http://host:8080/full.json —
-  # и ежечасное «Auto update» у одного человека могло скачать конфиг другого,
-  # если в этот момент шла его выдача. Токен постоянный (лежит в реестре),
-  # поэтому ссылка человека не меняется от выдачи к выдаче.
-  local tok root
+BCAST_STATE="${BCAST_STATE:-/etc/sing-box/broadcast-state.json}"
+BCAST_LAST="${BCAST_LAST:-/etc/sing-box/broadcast-last.json}"
+
+ensure_token() { # name -> персональный токен ссылки (создаёт, если нет)
+  local name="$1" tok
   tok="$(get_field "$name" share_token)"
   if [[ -z "$tok" || "$tok" == "None" ]]; then
     tok="$(python3 -c 'import secrets;print(secrets.token_hex(5))')"
@@ -155,6 +149,39 @@ for u in d["users"]:
 json.dump(d,open(os.environ["STORE"],"w"),indent=2,ensure_ascii=False)
 PY
   fi
+  echo "$tok"
+}
+
+stop_broadcast() { # снять идущую рассылку (она держит тот же порт 8080)
+  local pid
+  pid="$(python3 -c "import json;print(json.load(open('$BCAST_STATE')).get('pid',''))" 2>/dev/null)"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+  if tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q "vpn-users.sh broadcast"; then
+    kill -TERM -- "-$(ps -o pgid= -p "$pid" | tr -d ' ')" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
+    sleep 1
+  fi
+  rm -f "$BCAST_STATE"
+}
+
+free_port_8080() {
+  # Снимаем зависшую прошлую раздачу ДО сборки: её trap делает rm -rf своего
+  # каталога и иначе унёс бы уже готовые файлы (см. make-ios-configs-server.sh).
+  stop_broadcast
+  if ss -tln 2>/dev/null | grep -q ":8080 "; then pkill -f "http.server 8080" 2>/dev/null && sleep 2; fi
+}
+
+share() { # собрать и раздать конфиг конкретного человека
+  local name="$1" uuid out
+  uuid="$(get_field "$name" uuid)"
+  [[ -n "$uuid" ]] || { echo "Нет такого пользователя: $name"; exit 1; }
+  [[ "$(get_field "$name" enabled)" == "True" ]] || echo "[!] $name сейчас ОТКЛЮЧЁН — конфиг соберётся, но работать не будет."
+  free_port_8080
+  # Ссылка у каждого своя. Раньше все получали http://host:8080/full.json —
+  # и ежечасное «Auto update» у одного человека могло скачать конфиг другого,
+  # если в этот момент шла его выдача. Токен постоянный (лежит в реестре),
+  # поэтому ссылка человека не меняется от выдачи к выдаче.
+  local tok root
+  tok="$(ensure_token "$name")"
   root="/tmp/guest-$name"
   out="$root/$tok"
   rm -rf "$root"
@@ -205,6 +232,97 @@ PLACEHOLDER
   ufw allow 8080/tcp >/dev/null 2>&1 || true
   trap 'ufw delete allow 8080/tcp >/dev/null 2>&1; rm -rf "$root"' EXIT INT TERM
   cd "$root" && python3 -m http.server 8080
+}
+
+broadcast() { # раздать СВЕЖИЕ профили всем включённым и закрыться, когда все скачали
+  # Зачем: у гостей в sing-box стоит «Auto update» раз в час по личной ссылке, но
+  # ссылка живёт только во время выдачи. Чтобы обновление правил (как .рф в
+  # punycode) дошло само, раздаём ВСЕ каталоги разом и следим по запросам, кто
+  # уже забрал full.json. Закрываемся, когда забрали все, или по таймауту.
+  # root НЕ local: trap EXIT срабатывает уже после выхода из функции, и при set -u
+  # локальная переменная там не видна («root: unbound variable», уборка не шла).
+  local hours="${1:-24}" map
+  root="/tmp/guest-all"
+  [[ "$hours" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "Часы — число: broadcast 24"; exit 2; }
+  free_port_8080
+  # Имя<TAB>uuid<TAB>токен по каждому включённому; токены без записи создаём тут же.
+  map="$(STORE="$STORE" python3 <<'PY'
+import json,os,secrets
+p=os.environ["STORE"]; d=json.load(open(p)); dirty=False
+for u in d["users"]:
+    if not u.get("enabled"): continue
+    if not u.get("share_token"): u["share_token"]=secrets.token_hex(5); dirty=True
+    print(u["name"], u["uuid"], u["share_token"], sep="\t")
+if dirty: json.dump(d,open(p,"w"),indent=2,ensure_ascii=False)
+PY
+)"
+  [[ -n "$map" ]] || { echo "Включённых пользователей нет — раздавать нечего."; exit 1; }
+  rm -rf "$root"; mkdir -p "$root"; : > "$root/index.html"
+  local n=0 name uuid tok
+  while IFS=$'\t' read -r name uuid tok; do
+    [[ -n "$name" ]] || continue
+    GUEST_UUID="$uuid" OUT_DIR="$root/$tok" SERVE=0 bash "$REPO/scripts/make-ios-configs-server.sh" >/dev/null \
+      || { echo "[!] Не собрался конфиг для $name"; rm -rf "$root"; exit 1; }
+    rm -f "$root/$tok/strict.json" "$root/$tok/selective.json"
+    # По личной ссылке в это время памятки нет — только профиль для приложения.
+    cat > "$root/$tok/index.html" <<'HTML'
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>FutureFlow</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:#0c0e12;color:#eef1f7;font:15px/1.55 -apple-system,BlinkMacSystemFont,'SF Pro Text',
+'Segoe UI',Roboto,sans-serif}.box{text-align:center;padding:28px;max-width:420px}
+h1{font-size:19px;font-weight:640;margin:0 0 8px}p{color:#9aa4b8;font-size:13.5px;margin:0}</style>
+</head><body><div class="box"><h1>Профиль обновляется сам</h1>
+<p>Приложение sing-box заберёт свежие настройки автоматически. Если нужна памятка
+с QR-кодом — попросите владельца открыть выдачу.</p></div></body></html>
+HTML
+    n=$((n+1))
+  done <<< "$map"
+  echo "[*] Собрано профилей: $n. Раздаю на 8080 до $hours ч или пока все не скачают."
+  ufw allow 8080/tcp >/dev/null 2>&1 || true
+  trap 'ufw delete allow 8080/tcp >/dev/null 2>&1; rm -rf "$root"; rm -f "$BCAST_STATE"' EXIT INT TERM
+  ROOT="$root" STATE="$BCAST_STATE" LAST="$BCAST_LAST" HOURS="$hours" MAP="$map" OWN_PID="$$" python3 - <<'PY'
+import http.server, json, os, signal, threading, time, functools
+root=os.environ["ROOT"]; state=os.environ["STATE"]; last=os.environ["LAST"]
+hours=float(os.environ["HOURS"]); now=int(time.time())
+users={}
+for line in os.environ["MAP"].splitlines():
+    name,_,tok=line.split("\t"); users[name]={"token":tok,"fetched":None}
+tok2name={u["token"]:n for n,u in users.items()}
+st={"pid":int(os.environ["OWN_PID"]),"started":now,"deadline":int(now+hours*3600),"users":users}
+lock=threading.Lock()
+def save(path,obj):
+    tmp=path+".tmp"
+    with open(tmp,"w") as f: json.dump(obj,f,ensure_ascii=False,indent=1)
+    os.replace(tmp,path)
+save(state,st)
+def finish(reason):
+    with lock:
+        st["finished"]=int(time.time()); st["reason"]=reason; save(last,st)
+class H(http.server.SimpleHTTPRequestHandler):
+    def log_message(self,*a): pass
+    def do_GET(self):
+        super().do_GET()
+        parts=self.path.split("?")[0].strip("/").split("/")
+        if len(parts)==2 and parts[1]=="full.json" and parts[0] in tok2name:
+            with lock:
+                u=st["users"][tok2name[parts[0]]]
+                if not u["fetched"]: u["fetched"]=int(time.time()); save(state,st)
+http.server.ThreadingHTTPServer.allow_reuse_address=True
+srv=http.server.ThreadingHTTPServer(("0.0.0.0",8080),functools.partial(H,directory=root))
+def on_term(*a):
+    finish("stopped"); os._exit(0)
+signal.signal(signal.SIGTERM,on_term); signal.signal(signal.SIGINT,on_term)
+def watch():
+    while True:
+        time.sleep(float(os.environ.get("BCAST_TICK","15")))
+        with lock: done=all(u["fetched"] for u in st["users"].values())
+        if done or time.time()>st["deadline"]:
+            finish("all" if done else "timeout"); srv.shutdown(); return
+threading.Thread(target=watch,daemon=True).start()
+srv.serve_forever()
+PY
+  echo "[*] Рассылка завершена."
 }
 
 case "$CMD" in
@@ -284,6 +402,9 @@ PY
     # Пересобрать конфиг из стора: пользователи + их запреты. Зовётся панелью
     # после правки ограничений.
     apply
+    ;;
+  broadcast)
+    broadcast "${NAME:-24}"
     ;;
   *)
     sed -n '3,18p' "$0"

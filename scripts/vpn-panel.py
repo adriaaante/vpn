@@ -42,6 +42,8 @@ DECOY_STATUS = os.environ.get("DECOY_STATUS", "/etc/sing-box/decoy-status.json")
 # переживает закрытие панели, а новая панель должна знать, что она идёт,
 # и уметь её закрыть.
 SHARE_STATE = os.environ.get("SHARE_STATE", "/etc/sing-box/share-state.json")
+BCAST_STATE = os.environ.get("BCAST_STATE", "/etc/sing-box/broadcast-state.json")
+BCAST_LAST = os.environ.get("BCAST_LAST", "/etc/sing-box/broadcast-last.json")
 PORT = int(os.environ.get("PANEL_PORT", "8787"))
 
 share_proc = {"name": None, "proc": None}
@@ -1540,6 +1542,36 @@ def share_modal(name, opened=True):
         f'<button class="danger">Закрыть выдачу</button></form></div>', opened=opened)
 
 
+def bcast_banner():
+    """Плашка рассылки обновления: идёт — кто уже получил и когда закроется;
+    закончилась — итог с теми, до кого не дошло (их профиль остался прежним)."""
+    st = bcast_state()
+    if st:
+        us = st.get("users", {})
+        got = [n for n, u in us.items() if u.get("fetched")]
+        left = max(0, int(st.get("deadline", 0)) - int(time.time()))
+        till = f"{left // 3600} ч. {left % 3600 // 60} мин." if left >= 3600 else f"{max(1, left // 60)} мин."
+        names = ", ".join(html.escape(pretty(n)) for n in got) or "пока никто"
+        return (f'<div class="msg warn"><span>Рассылка обновления: получили '
+                f'<b>{len(got)} из {len(us)}</b> ({names}). Закроется сама, когда получат все, '
+                f'иначе через {till}.</span>'
+                f'<form method="post" action="/act"><input type="hidden" name="op" value="bcast_stop">'
+                f'<button class="danger">Остановить</button></form></div>')
+    last = bcast_last()
+    if not last or int(time.time()) - int(last.get("finished", 0)) > 2 * 86400:
+        return ""
+    us = last.get("users", {})
+    miss = [pretty(n) for n, u in us.items() if not u.get("fetched")]
+    why = {"all": "получили все", "timeout": "вышло время", "stopped": "остановлена вручную"}.get(
+        last.get("reason"), "завершена")
+    tail = (f" Не получили: <b>{html.escape(', '.join(miss))}</b> — у них прежний профиль, "
+            f"можно повторить рассылку или открыть выдачу." if miss else "")
+    return (f'<div class="msg"><span>Последняя рассылка {ago(last.get("finished"))}: {why}, '
+            f'{len(us) - len(miss)} из {len(us)}.{tail}</span>'
+            f'<form method="post" action="/act"><input type="hidden" name="op" value="bcast_dismiss">'
+            f'<button>Скрыть</button></form></div>')
+
+
 def page(msg="", err=False, extra_modal="", open_nodes=False):
     st, dom = server_status(), domain_info()
     rows, modals = [], []
@@ -1591,6 +1623,7 @@ def page(msg="", err=False, extra_modal="", open_nodes=False):
             f'<button class="danger">Закрыть выдачу</button></form></div>')
     else:
         share_banner = ""
+    share_banner += bcast_banner()
     body = "".join(rows) or '<tr><td colspan="4" class="note">Пока никого нет</td></tr>'
     left = dom.get("days_left")
     dline = html.escape(dom.get("host", "—")) + (f' · {left} дн. до продления' if left is not None else "")
@@ -1604,7 +1637,9 @@ def page(msg="", err=False, extra_modal="", open_nodes=False):
 <button onclick="openM('server')">Сервер и домен</button></header>
 {msg_html}{share_banner}
 <div class="card"><div class="cardhead"><h2>Кто пользуется</h2><span class="sp"></span>
-<button class="primary" onclick="openM('add')">Добавить человека</button></div>
+<button class="primary" onclick="openM('add')">Добавить человека</button>
+<form method="post" action="/act" onsubmit="return confirm('Раздать всем свежий профиль? Их приложения заберут его сами в течение часа-двух; выдача закроется, когда получат все (или через сутки).')">
+<input type="hidden" name="op" value="bcast_start"><button title="Профили гостей обновятся сами, без новых ссылок и QR">Разослать обновление</button></form></div>
 <table><tr><th>Имя</th><th>Доступ</th><th>Ограничения</th><th></th></tr>{body}</table>
 <div class="status">
 <span><b>сервер</b> {"работает" if st["singbox"] == "active" else "не работает"}</span>
@@ -1657,16 +1692,82 @@ def publish_guide_async(name, wait=60.0):
     threading.Thread(target=publish_guide, args=(name, wait), daemon=True).start()
 
 
-def _is_share(pid):
-    """Это точно наш процесс раздачи, а не чужой с переиспользованным pid.
-    Проверка по аргументам, как в take_over_port: pid'ы переиспользуются, и
+def _is_users_cmd(pid, cmd):
+    """Это точно наш процесс vpn-users.sh <cmd>, а не чужой с переиспользованным
+    pid. Проверка по аргументам, как в take_over_port: pid'ы переиспользуются, и
     убить по записи из файла что попало — плохая идея."""
     try:
         with open(f"/proc/{pid}/cmdline", "rb") as f:
             argv = [x.decode("utf-8", "replace") for x in f.read().split(b"\0") if x]
     except OSError:
         return False
-    return any(a.endswith("vpn-users.sh") for a in argv) and "share" in argv
+    return any(a.endswith("vpn-users.sh") for a in argv) and cmd in argv
+
+
+def _is_share(pid):
+    return _is_users_cmd(pid, "share")
+
+
+def _kill_group(pid, alive):
+    """SIGTERM, потом SIGKILL всей группе процесса; alive(pid) говорит, жив ли ещё."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(os.getpgid(pid), sig)
+        except OSError:
+            return
+        for _ in range(10):
+            time.sleep(0.2)
+            if not alive(pid):
+                return
+
+
+def bcast_state():
+    """Идёт ли рассылка обновления: {pid, started, deadline, users{name:{token,fetched}}}
+    или {}. Файл пишет сам скрипт рассылки; протухший (процесс умер) убираем."""
+    try:
+        d = json.load(open(BCAST_STATE))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    pid = d.get("pid")
+    if isinstance(pid, int) and _is_users_cmd(pid, "broadcast"):
+        return d
+    try:
+        os.remove(BCAST_STATE)
+    except OSError:
+        pass
+    return {}
+
+
+def bcast_last():
+    """Итог последней рассылки (пишется при завершении) или {}."""
+    try:
+        return json.load(open(BCAST_LAST))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def start_broadcast(hours=24):
+    """Раздать свежие профили всем включённым; скрипт сам закроется, когда каждый
+    скачает full.json (или через hours). Обычную выдачу снимаем: порт один."""
+    stop_share()
+    stop_broadcast()
+    try:
+        os.remove(BCAST_LAST)
+    except OSError:
+        pass
+    env = dict(os.environ, STORE=STORE, CFG=CFG, BCAST_STATE=BCAST_STATE, BCAST_LAST=BCAST_LAST)
+    subprocess.Popen(["bash", USERS_SH, "broadcast", str(hours)], env=env,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def stop_broadcast():
+    st = bcast_state()
+    if st.get("pid"):
+        _kill_group(st["pid"], lambda p: _is_users_cmd(p, "broadcast"))
+    try:
+        os.remove(BCAST_STATE)
+    except OSError:
+        pass
 
 
 def share_state():
@@ -1689,6 +1790,7 @@ def share_state():
 
 def start_share(name):
     stop_share()
+    stop_broadcast()
     # Закрепляем токен ДО запуска скрипта. Иначе гонка: скрипт, не найдя токена,
     # сгенерирует свой и создаст каталог с ним, а панель параллельно сгенерирует
     # другой и положит памятку мимо — по ссылке остался бы листинг каталога.
@@ -1712,18 +1814,7 @@ def stop_share():
     st = share_state()
     pid = st.get("pid")
     if pid:
-        for sig in (signal.SIGTERM, signal.SIGKILL):
-            try:
-                os.killpg(os.getpgid(pid), sig)
-            except OSError:
-                break
-            for _ in range(10):
-                time.sleep(0.2)
-                if not _is_share(pid):
-                    break
-            else:
-                continue
-            break
+        _kill_group(pid, _is_share)
     try:
         os.remove(SHARE_STATE)
     except OSError:
@@ -1845,6 +1936,20 @@ class Handler(BaseHTTPRequestHandler):
         if op == "share_stop":
             stop_share()
             return self._send(page("Выдача закрыта."))
+        if op == "bcast_start":
+            if not any(u.get("enabled") for u in users()):
+                return self._send(page("Включённых людей нет — рассылать некому.", err=True))
+            start_broadcast()
+            return self._send(page("Рассылка запущена: профили заберутся сами."))
+        if op == "bcast_stop":
+            stop_broadcast()
+            return self._send(page("Рассылка остановлена."))
+        if op == "bcast_dismiss":
+            try:
+                os.remove(BCAST_LAST)
+            except OSError:
+                pass
+            return self._send(page())
         if op == "check_decoys":
             start_check()
             return self._send(page(open_nodes=True))
