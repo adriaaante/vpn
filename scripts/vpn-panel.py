@@ -888,6 +888,11 @@ border-radius:50%;background:var(--card2);border:1px solid var(--line);color:var
 font-size:12px;line-height:22px;text-align:center}
 .steps b{font-weight:600}
 .steps .sub{color:var(--dim);font-size:13.5px;margin-top:3px}
+/* Подшаги внутри раскрывашки: обычная нумерация, без кружков-счётчиков верхнего списка. */
+.steps .substeps{list-style:decimal;padding-left:22px;margin:8px 0 12px;counter-reset:none}
+.steps .substeps li{counter-increment:none;padding-left:4px;margin-bottom:9px;font-size:13.5px}
+.steps .substeps li:before{content:none}
+.substeps code,.fbody code{background:rgba(255,255,255,.08);padding:1px 6px;border-radius:5px;font-size:12.5px;white-space:nowrap}
 .card{background:var(--card);border:1px solid var(--line);border-radius:15px;
 padding:18px 20px;margin-bottom:16px}
 code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;
@@ -1419,9 +1424,37 @@ def guide_html(name):
         <div class="sub">В приложении: вкладка <b>Главная</b> → значок <b>сканера</b>
         вверху справа → наведите на QR ниже (у активного узла он уже раскрыт).</div></li>
       <li><b>Включите переключатель вверху</b>
-        <div class="sub">Затем на главном экране <b>Global Routing → Proxy</b>, чтобы
-        весь трафик шёл через VPN. Проверка на <code>ipinfo.io</code>: страна
-        Латвия (LV).</div></li>
+        <div class="sub">Проверка на <code>ipinfo.io</code>: страна Латвия (LV).</div></li>
+      <li><b>Российские сайты — напрямую</b> (3 минуты, один раз)
+        <div class="sub">Чтобы банки, Госуслуги и остальные российские сайты видели ваш
+        обычный российский адрес, а не VPN. Три правила, добавляются руками — из QR-кода
+        они не берутся, зато потом не слетают при добавлении узлов.</div>
+        <details class="fold"><summary>Как добавить правила — по шагам</summary>
+        <div class="fbody">
+        <ol class="substeps">
+          <li>Внизу экрана вкладка <b>«Настройка»</b> (значок папки).</li>
+          <li>В списке «Локальные файлы» нажмите <b>default.conf</b> →
+            <b>«Редактировать конфигурацию»</b>.</li>
+          <li>Откройте строку <b>«Правило»</b>. Там уже сотни встроенных правил
+            (китайские сайты, реклама) — это норма, их не трогаем.</li>
+          <li>Нажмите <b>«+»</b> вверху справа и заполните:
+            <b>Тип</b> → <code>DOMAIN-SUFFIX</code>, <b>Политика</b> → <code>DIRECT</code>,
+            поле <b>«Домен»</b> → <code>ru</code>. Переключатели не трогайте.
+            <b>«Сохранить»</b>.</li>
+          <li>Снова <b>«+»</b>: <code>DOMAIN-SUFFIX</code>, <code>DIRECT</code>,
+            домен <code>xn--p1ai</code> — так пишется зона <b>.рф</b>, кириллицей не сработает.</li>
+          <li>Снова <b>«+»</b>: <b>Тип</b> → <code>GEOIP</code>, <b>Политика</b> →
+            <code>DIRECT</code>, страна <code>RU</code>.</li>
+          <li>Проверьте порядок: три новых правила должны стоять <b>выше</b> строки
+            <code>FINAL</code>. Если оказались ниже — зажмите и перетащите вверх.</li>
+          <li>Выключите и снова включите VPN. В <b>«Настройки» → «Маршрутизация»</b>
+            должен быть выбран режим <b>«Настройка»</b> (так по умолчанию).</li>
+        </ol>
+        <p><b>Проверка:</b> вкладка «Настройка» → <b>«Правило тестирования»</b> → введите
+        <code>sberbank.ru</code> → ответ <code>DIRECT</code>. В браузере
+        <code>yandex.ru/internet</code> покажет российский адрес, а <code>ipinfo.io</code> —
+        Латвию.</p>
+        </div></details></li>
     </ol>
     <h2>Узлы — добавьте активный, остальные про запас</h2>
     {nodes_html}"""
