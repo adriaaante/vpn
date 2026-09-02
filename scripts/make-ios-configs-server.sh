@@ -21,7 +21,7 @@ SERVE="${SERVE:-1}"
 PBKF="${PBKF:-/etc/sing-box/reality_public_key.txt}"
 [[ -f "$PBKF" ]] || { echo "Нет публичного ключа ($PBKF) — запусти fix-reality-sni.sh"; exit 1; }
 
-IP=$(curl -fsSL --max-time 6 https://api.ipify.org 2>/dev/null || echo 89.46.238.74)
+IP=$(curl -fsSL --max-time 6 https://api.ipify.org 2>/dev/null || echo 83.172.151.177)
 UUID="${GUEST_UUID:-$(python3 -c "import json;print(json.load(open('$CFG'))['inbounds'][0]['users'][0]['uuid'])")}"
 SID=$(python3 -c "import json;r=json.load(open('$CFG'))['inbounds'][0]['tls']['reality']['short_id'];print(r[0] if isinstance(r,list) else r)")
 FLOW=$(python3 -c "import json;print(json.load(open('$CFG'))['inbounds'][0]['users'][0].get('flow',''))")
