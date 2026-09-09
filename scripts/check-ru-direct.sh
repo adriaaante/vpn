@@ -23,8 +23,23 @@ CFG="${LOCAL:-$DIR/configs/singbox-client.local.json}"
 SRS="${SRS:-${TMPDIR:-/tmp}/geoip-ru.srs}"
 SRS_URL="https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs"
 
+# --foreign: обратная проверка. Зарубежные сервисы ДОЛЖНЫ идти через туннель;
+# если такой хост совпал с правилом «напрямую» или попал в geoip-ru, ему утечёт
+# российский адрес — для Claude и платёжных систем это прямой путь к блокировке.
+MODE=ru
+if [ "${1:-}" = "--foreign" ]; then MODE=foreign; shift; fi
+
 HOSTS=("$@")
-if [ "${#HOSTS[@]}" -eq 0 ]; then
+if [ "$MODE" = foreign ] && [ "${#HOSTS[@]}" -eq 0 ]; then
+  HOSTS=(claude.ai www.claude.ai claude.com api.anthropic.com anthropic.com
+         console.anthropic.com openai.com chatgpt.com api.openai.com
+         stripe.com api.stripe.com js.stripe.com checkout.stripe.com
+         paypal.com www.paypal.com visa.com mastercard.com
+         wise.com revolut.com github.com api.github.com
+         google.com youtube.com googleapis.com cloudflare.com
+         microsoft.com login.microsoftonline.com telegram.org t.me)
+fi
+if [ "$MODE" = ru ] && [ "${#HOSTS[@]}" -eq 0 ]; then
   # Парковки и город, T-Банк, платёжные, госуслуги — то, что чаще всего просят.
   HOSTS=(parking.mos.ru lk.parking.mos.ru api.parking.mos.ru pgu.mos.ru avtokod.mos.ru
          transport.mos.ru troika.mos.ru emias.info emias.mos.ru
@@ -74,8 +89,10 @@ for h in "${HOSTS[@]}"; do
   by_dom="нет"
   while IFS= read -r suf; do
     [ -n "$suf" ] || continue
-    s="${suf#.}"
-    case "$h" in "$s"|*".$s") by_dom="да"; break;; esac
+    case "$suf" in
+      .*) case "$h" in *"$suf") by_dom="да"; break;; esac ;;
+      *)  case "$h" in "$suf"|*".$suf") by_dom="да"; break;; esac ;;
+    esac
   done <<< "$SUFFIXES"
 
   ip="$(resolve "$h")"
@@ -91,11 +108,24 @@ for h in "${HOSTS[@]}"; do
     fi
   fi
   printf "%-24s %-16s %-10s %s\n" "$h" "${ip:-—}" "$by_dom" "$by_ip"
-  [ "$by_dom" = "нет" ] && [ "$by_ip" = "нет" ] && bad="$bad $h"
+  if [ "$MODE" = foreign ]; then
+    # Для зарубежного хоста плохо ЛЮБОЕ совпадение: оно уводит его мимо туннеля.
+    { [ "$by_dom" = "да" ] || [ "$by_ip" = "да" ]; } && bad="$bad $h"
+  else
+    [ "$by_dom" = "нет" ] && [ "$by_ip" = "нет" ] && bad="$bad $h"
+  fi
 done
 
 echo
-if [ -n "$bad" ]; then
+if [ "$MODE" = foreign ]; then
+  if [ -n "$bad" ]; then
+    echo "[!] УТЕЧКА: этим зарубежным сервисам достанется российский адрес —"
+    for h in $bad; do echo "    $h"; done
+    echo "    Совпало правило «напрямую» или адрес числится российским в geoip-ru."
+  else
+    echo "[OK] Утечки нет: ни один зарубежный хост не уходит мимо туннеля."
+  fi
+elif [ -n "$bad" ]; then
   echo "[!] Идут ЧЕРЕЗ ТУННЕЛЬ (рос. сервис увидит зарубежный адрес):"
   for h in $bad; do echo "    $h"; done
   echo "    Лечится добавлением домена в правило: см. WANT в scripts/fix-ru-rules.sh"

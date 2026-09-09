@@ -38,9 +38,9 @@ if not ru:
 # Латвию — отсюда «иногда парковка/оплата не открывается». Доменные правила
 # работают сразу, без загрузки.
 WANT=[".xn--p1ai",".su",".xn--80adxhks",".xn--p1acf",
-      ".sberbank.com",".userapi.com",".mycdn.me",".vk.me",".vkuser.net",
-      ".vkuservideo.net",".vkuserlive.net",".wbstatic.net",".avito.st",
-      ".2gis.com",".okko.tv",".more.tv",".premier.one",".lenta.com",".emias.info"]
+      "sberbank.com","userapi.com","mycdn.me","vk.me","vkuser.net",
+      "vkuservideo.net","vkuserlive.net","wbstatic.net","avito.st",
+      "2gis.com","okko.tv","more.tv","premier.one","lenta.com","emias.info"]
 for r in ru:
     ds=r["domain_suffix"]; i=ds.index(".рф")+1 if ".рф" in ds else len(ds)
     for w in WANT:
