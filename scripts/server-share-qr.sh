@@ -10,7 +10,7 @@ PBKF=/etc/sing-box/reality_public_key.txt
 [[ -f "$CFG" ]] || { echo "Нет $CFG"; exit 1; }
 [[ -f "$PBKF" ]] || { echo "Нет $PBKF (публичный ключ). Сначала запусти fix-reality-sni.sh"; exit 1; }
 
-IP=$(curl -fsSL --max-time 6 https://api.ipify.org 2>/dev/null || echo 83.172.151.177)
+IP=$(curl -fsSL --max-time 6 https://api.ipify.org 2>/dev/null || echo "$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)")
 UUID=$(python3 -c "import json;print(json.load(open('$CFG'))['inbounds'][0]['users'][0]['uuid'])")
 SNI=$(python3 -c "import json;print(json.load(open('$CFG'))['inbounds'][0]['tls']['server_name'])")
 SID=$(python3 -c "import json;r=json.load(open('$CFG'))['inbounds'][0]['tls']['reality']['short_id'];print(r[0] if isinstance(r,list) else r)")

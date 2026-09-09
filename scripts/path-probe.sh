@@ -14,7 +14,24 @@
 
 set -uo pipefail
 
-SRV_IP="${SRV_IP:-83.172.151.177}"
+# Адрес сервера НЕ зашиваем: он меняется каждые пару недель, и зашитая константа
+# молча уводит диагностику на давно чужой адрес. Берём из имени сервера (A-запись,
+# TTL 600) — оно и есть источник правды, его же обновляет vpn-migrate.sh.
+srv_ip_default() {
+  local h ip
+  h="$(cat "$(dirname "${BASH_SOURCE[0]}")/../configs/server-host.txt" 2>/dev/null | tr -d '[:space:]')"
+  [[ -n "$h" ]] || h="lv.pine-ledger.fyi"
+  ip="$(dig +short "$h" A 2>/dev/null | grep -m1 -E '^[0-9.]+$')"
+  [[ -n "$ip" ]] || ip="$(curl -fsS --max-time 6 -H 'accept: application/dns-json' \
+      "https://cloudflare-dns.com/dns-query?name=$h&type=A" 2>/dev/null \
+    | python3 -c 'import json,sys
+try:
+    print(next(a["data"] for a in json.load(sys.stdin).get("Answer",[]) if a.get("type")==1))
+except Exception: pass' 2>/dev/null)"
+  echo "$ip"
+}
+SRV_IP="${SRV_IP:-$(srv_ip_default)}"
+[[ -n "$SRV_IP" ]] || { echo "Не удалось узнать адрес сервера по имени. Задай явно: SRV_IP=1.2.3.4 bash $0"; exit 1; }
 SRV_V6_NET="${SRV_V6_NET:-2a03:f80:371:9ef5}"   # блок из панели EDIS
 SNI="${SNI:-www.apple.com}"
 ALT_PORTS="${ALT_PORTS:-2053 8443 993 2083 8880}"
