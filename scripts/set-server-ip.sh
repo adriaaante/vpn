@@ -70,6 +70,18 @@ if command -v sing-box >/dev/null 2>&1; then
   echo "[*] Конфиг валиден."
 fi
 
+# Узлы по ИМЕНИ сервера — страховка от следующей блокировки: поменял A-запись, и
+# мак переехал сам, без единой команды (так уже умеют айфон и Shadowrocket).
+# В шаблоне их НЕТ (все 8 узлов — по адресу), поэтому добавляем здесь, если их нет.
+# Раньше это надо было вспомнить и запустить руками, и 09.09 мак из-за этого лёг,
+# пока Shadowrocket работал: его узлы прописаны именем и пережили смену адреса.
+HOST="$(cat "$DIR/configs/server-host.txt" 2>/dev/null | tr -d '[:space:]')"
+if [[ -n "$HOST" ]] && ! grep -q '"reality-dns' "$LOCAL"; then
+  echo "[*] Добавляю узлы по имени $HOST (переживут следующую смену адреса)..."
+  SKIP_DEPLOY=1 bash "$DIR/scripts/add-domain-routes.sh" "$HOST" \
+    || echo "[!] Не вышло — не страшно, адресные узлы работают. Позже: bash scripts/add-domain-routes.sh $HOST"
+fi
+
 bash "$DIR/scripts/install-macos-daemon.sh"
 echo
 echo "[OK] Клиент переехал на $NEW. Проверка: curl -s https://ipinfo.io/country  (ждём LV)"
