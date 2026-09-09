@@ -125,12 +125,36 @@ UNIT
 }
 
 open_firewall() {
+  local ports="${OPEN_PORTS:-443 2053 8443}" p done=0
   if command -v ufw >/dev/null 2>&1; then
-    echo "[*] Открываю 443/tcp в ufw..."
-    ufw allow 443/tcp >/dev/null 2>&1 || true
-  else
-    echo "[!] ufw не найден — открой 443/tcp в фаерволе провайдера вручную."
+    echo "[*] Открываю в ufw: $ports"
+    for p in $ports; do ufw allow "$p/tcp" >/dev/null 2>&1 || true; done
+    done=1
   fi
+  # Образы Oracle Cloud (и части других облаков) приезжают с ГОТОВЫМИ правилами
+  # iptables, где всё кроме 22 отброшено, а ufw при этом неактивен. Симптом ровно
+  # такой, как будто сервер заблокировали: снаружи порт «открыт» по SYN, а
+  # рукопожатие не идёт. Поэтому правила ставим и в iptables тоже — идемпотентно
+  # (-C проверяет, есть ли уже такое) и с сохранением, иначе они умрут при ребуте.
+  if command -v iptables >/dev/null 2>&1 && iptables -S INPUT 2>/dev/null | grep -qE '^-A INPUT'; then
+    echo "[*] Открываю в iptables: $ports"
+    for p in $ports; do
+      iptables -C INPUT -p tcp --dport "$p" -j ACCEPT 2>/dev/null \
+        || iptables -I INPUT 1 -p tcp --dport "$p" -j ACCEPT
+    done
+    if command -v netfilter-persistent >/dev/null 2>&1; then
+      netfilter-persistent save >/dev/null 2>&1 || true
+    elif [[ -d /etc/iptables ]]; then
+      iptables-save > /etc/iptables/rules.v4 2>/dev/null || true
+    else
+      echo "[!] Правила iptables НЕ сохранены (нет netfilter-persistent) — после"
+      echo "    перезагрузки открой порты снова:  apt-get install -y iptables-persistent"
+    fi
+    done=1
+  fi
+  (( done )) || echo "[!] Ни ufw, ни правил iptables — открой $ports в фаерволе провайдера вручную."
+  echo "[!] У облачных провайдеров есть ВТОРОЙ фаервол, в панели (у Oracle это"
+  echo "    Security List / NSG у подсети). Порты $ports надо открыть и там."
 }
 
 print_client_values() {
