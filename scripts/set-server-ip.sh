@@ -27,9 +27,10 @@ NEW="$NEW" HOSTFILE="$DIR/configs/server-host.txt" python3 - "$LOCAL" <<'PY'
 import json,os,sys
 p=sys.argv[1]; d=json.load(open(p)); new=os.environ["NEW"]; old=set(); n=0
 for o in d.get("outbounds",[]):
-    # reality-dns* специально ходят по ИМЕНИ сервера — их адрес не трогаем,
+    # reality-dns* ходят по ИМЕНИ сервера, reality-ip-* — это ДРУГИЕ адреса того же
+    # сервера (add-client-ip.sh). И то и другое трогать нельзя,
     # иначе доменные маршруты (страховка от блокировки IP) молча исчезают.
-    if o.get("type")!="vless" or str(o.get("tag","")).startswith("reality-dns"): continue
+    if o.get("type")!="vless" or str(o.get("tag","")).startswith(("reality-dns","reality-ip-")): continue
     old.add(o.get("server")); o["server"]=new; n+=1
 
 # Сам сервер должен идти МИМО туннеля. Иначе ssh и веб-панель к нему заворачиваются
