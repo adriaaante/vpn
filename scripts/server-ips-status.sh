@@ -28,7 +28,14 @@ fi
 # Что проверяем, берём из самого конфига: какие адреса, порты и домены прикрытия
 # клиент реально использует, те и пробуем. Итог считаем ПО АДРЕСАМ, а не по портам:
 # адрес живой, если ответил хотя бы один его порт — трафик пойдёт по нему.
-mapfile -t ROWS < <(python3 - "$LOCAL" <<'PY'
+# ВАЖНО: не `mapfile` — на маке /bin/bash версии 3.2, а mapfile появился в bash 4.
+# Там он молча не выполнялся, массив оставался пустым, и скрипт печатал
+# «Все адреса живые (0)». Та же семья граблей, что №5b (на маке нет `timeout`).
+# `ROWS+=(...)` и подстановка процесса работают и в 3.2.
+ROWS=()
+while IFS= read -r __line; do
+  [ -n "$__line" ] && ROWS+=("$__line")
+done < <(python3 - "$LOCAL" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1])); seen={}
 for o in d.get("outbounds",[]):
@@ -41,7 +48,10 @@ for (srv,port),sni in sorted(seen.items()):
     print(srv,port,sni,sep="\t")
 PY
 )
-(( ${#ROWS[@]} )) || { echo "В конфиге нет vless-узлов."; exit 1; }
+if [ "${#ROWS[@]}" -eq 0 ]; then
+  echo "Не удалось прочитать узлы из $LOCAL — проверять нечего."
+  exit 1
+fi
 
 probe() { # probe <sni> <адрес> <порт> — настоящее TLS-рукопожатие через этот адрес
   # --noproxy: прокси в окружении иначе даёт ложную ошибку TLS (грабля №5b).
@@ -66,7 +76,9 @@ for a in $ADDRS; do
 done
 
 echo
-if (( dead == 0 )); then
+if (( alive == 0 && dead == 0 )); then
+  echo "[!] Не проверен ни один адрес — это ошибка скрипта, а не состояние сервера."
+elif (( dead == 0 )); then
   echo "[OK] Все адреса живые ($alive). Запас есть."
 elif (( alive > 0 )); then
   echo "[!] Живых адресов: $alive, мёртвых: $dead ($(echo $dead_list))."

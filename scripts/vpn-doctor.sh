@@ -243,9 +243,16 @@ if [[ "$MODE" == "client" ]]; then
   # Сколько адресов сервера ещё живы. Переключение между ними молчаливое, поэтому
   # без этой строки запас незаметно кончается до последнего адреса.
   if [[ -x "$(dirname "${BASH_SOURCE[0]}")/server-ips-status.sh" ]]; then
-    echo "  адреса сервера:"
-    bash "$(dirname "${BASH_SOURCE[0]}")/server-ips-status.sh" 2>/dev/null \
-      | grep -E '^  [0-9]|^\[' | sed 's/^/  /'
+    if pgrep -x sing-box >/dev/null 2>&1; then
+      # Проба пошла бы ЧЕРЕЗ туннель и показала все адреса живыми — бесполезно и
+      # опасно: создаёт ложное «запас есть». Честнее не печатать ничего.
+      echo "  адреса сервера: не проверял, туннель включён (проверка через него врёт)."
+      echo "                  отдельно: vpn off && bash scripts/server-ips-status.sh; vpn on"
+    else
+      echo "  адреса сервера:"
+      bash "$(dirname "${BASH_SOURCE[0]}")/server-ips-status.sh" 2>/dev/null \
+        | grep -E '^  [0-9]|^\[' | sed 's/^/  /'
+    fi
   fi
 
   echo
