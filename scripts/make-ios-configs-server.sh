@@ -29,6 +29,12 @@ PBK=$(tr -d '[:space:]' < "$PBKF")
 # Имя сервера (если настроено) — тогда в конфиг попадут ещё и маршруты по домену,
 # и гость переживёт смену IP без перевыпуска профиля.
 SERVER_HOST="${SERVER_HOST:-$(tr -d '[:space:]' < /etc/sing-box/server-host.txt 2>/dev/null || true)}"
+# Остальные адреса ЭТОГО ЖЕ сервера (docs: add-server-ip.sh). sing-box слушает "::",
+# то есть обслуживает их сразу; в конфиг они попадают отдельными узлами, и клиент
+# сам перескакивает на живой, когда один адрес заблокируют. Без этого гости и айфон
+# знали бы только один адрес и легли бы вместе с ним.
+EXTRA_IPS="${EXTRA_IPS:-$(ip -4 -o addr show scope global 2>/dev/null \
+  | awk '{print $4}' | cut -d/ -f1 | grep -vx "$IP" | tr '\n' ' ')}"
 
 # Конфиги содержат UUID/short_id (учётные данные клиента) и раздаются по ОТКРЫТОМУ
 # HTTP. Порт 8080 закрываем при выходе (Ctrl+C/ошибка) и чистим /tmp/ios, чтобы не
@@ -45,7 +51,7 @@ if ss -tln 2>/dev/null | grep -q ":$PORT "; then
 fi
 
 mkdir -p "$OUT_DIR"
-OUT_DIR="$OUT_DIR" SERVER_HOST="$SERVER_HOST" IP="$IP" UUID="$UUID" SID="$SID" FLOW="$FLOW" PBK="$PBK" TPL="$TPL" python3 <<'PY'
+OUT_DIR="$OUT_DIR" SERVER_HOST="$SERVER_HOST" EXTRA_IPS="$EXTRA_IPS" IP="$IP" UUID="$UUID" SID="$SID" FLOW="$FLOW" PBK="$PBK" TPL="$TPL" python3 <<'PY'
 import json,os,copy
 # Домены-прикрытия для авто-failover (urltest). Сервер держит один на 443; клиент
 # держит все — работает тот, что совпал с серверным; если отвалится, urltest сам прыгнет.
@@ -70,6 +76,11 @@ for d in DECOYS:
     t="reality-"+d.split(".")[-2]; tags.append(t); vs.append(vless(t,d))
 for port,d in ALT:
     t=f"reality-alt{port}"; tags.append(t); vs.append(vless(t,d,port))
+# Узлы на запасные адреса сервера: по одному на адрес, чтобы не раздувать пробы
+# urltest (много параллельных TLS к одному серверу — сами по себе плохой признак).
+for i,extra in enumerate(os.environ.get("EXTRA_IPS","").split()):
+    o=vless(f"reality-ip{i+2}",DECOYS[i % len(DECOYS)]); o["server"]=extra
+    tags.append(o["tag"]); vs.append(o)
 HOST=os.environ.get("SERVER_HOST","").strip()
 if HOST:
     for port,d in ((443,"www.apple.com"),(2053,"www.cloudflare.com")):
