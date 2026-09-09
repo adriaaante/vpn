@@ -33,8 +33,12 @@ SERVER_HOST="${SERVER_HOST:-$(tr -d '[:space:]' < /etc/sing-box/server-host.txt 
 # то есть обслуживает их сразу; в конфиг они попадают отдельными узлами, и клиент
 # сам перескакивает на живой, когда один адрес заблокируют. Без этого гости и айфон
 # знали бы только один адрес и легли бы вместе с ним.
-EXTRA_IPS="${EXTRA_IPS:-$(ip -4 -o addr show scope global 2>/dev/null \
-  | awk '{print $4}' | cut -d/ -f1 | grep -vx "$IP" | tr '\n' ' ')}"
+# Плюс адреса ДРУГИХ наших серверов (второй хостер), если они выписаны в файл —
+# сама машина о них знать не может. По строке на адрес, # — комментарий.
+EXTRA_FILE="${EXTRA_FILE:-/etc/sing-box/extra-ips.txt}"
+EXTRA_IPS="${EXTRA_IPS:-$( { ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1
+  sed -e 's/#.*//' "$EXTRA_FILE" 2>/dev/null; } \
+  | grep -E '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' | grep -vx "$IP" | awk '!seen[$0]++' | tr '\n' ' ')}"
 
 # Конфиги содержат UUID/short_id (учётные данные клиента) и раздаются по ОТКРЫТОМУ
 # HTTP. Порт 8080 закрываем при выходе (Ctrl+C/ошибка) и чистим /tmp/ios, чтобы не
