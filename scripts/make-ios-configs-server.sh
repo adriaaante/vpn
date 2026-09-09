@@ -101,7 +101,14 @@ def base():
     d=copy.deepcopy(src)
     d["inbounds"]=[{"type":"tun","tag":"tun-in","address":["172.19.0.1/30","fdfe:dcba:9876::1/126"],
         "mtu":1358,"auto_route":True,"strict_route":True,"stack":"gvisor","endpoint_independent_nat":True}]
-    d.pop("experimental",None)
+    # Из macOS-секции выбрасываем clash_api (он для меню на маке), но КЕШ ОСТАВЛЯЕМ.
+    # Без него набор geoip-ru — а он remote — скачивается заново при КАЖДОМ запуске
+    # приложения, причём через туннель. Пока он не скачался, правило «российские
+    # адреса напрямую» не срабатывает, и парковка, оплата и банки идут через Латвию;
+    # если скачать не удалось — так и остаётся на всю сессию. Это и есть «иногда
+    # глючит и что-то не открывается». Путь не задаём: приложение кладёт файл в свой
+    # каталог, абсолютный путь мака (/etc/sing-box) там недоступен.
+    d["experimental"]={"cache_file":{"enabled":True}}
     d["dns"]={"servers":[{"tag":"dns-remote","address":"https://1.1.1.1/dns-query","detour":"proxy"}],
               "strategy":"ipv4_only","reverse_mapping":True,"final":"dns-remote"}
     if HOST:

@@ -32,7 +32,15 @@ ru=[r for r in rules if r.get("outbound")=="direct" and ".ru" in (r.get("domain_
 if not ru:
     print("[!] Не нашёл правило RU→direct (domain_suffix с .ru) — это не умный режим?"); sys.exit(1)
 # .xn--p1ai = .рф, .xn--80adxhks = .москва, .xn--p1acf = .рус (в SNI только punycode)
-WANT=[".xn--p1ai",".su",".xn--80adxhks",".xn--p1acf"]
+# Плюс российские сервисы на НЕ-.ru доменах: их адреса российские, но правило
+# «российские адреса напрямую» опирается на УДАЛЁННЫЙ набор geoip-ru, который
+# скачивается через туннель при старте. Пока он не скачался, рос. трафик идёт в
+# Латвию — отсюда «иногда парковка/оплата не открывается». Доменные правила
+# работают сразу, без загрузки.
+WANT=[".xn--p1ai",".su",".xn--80adxhks",".xn--p1acf",
+      ".sberbank.com",".userapi.com",".mycdn.me",".vk.me",".vkuser.net",
+      ".vkuservideo.net",".vkuserlive.net",".wbstatic.net",".avito.st",
+      ".2gis.com",".okko.tv",".more.tv",".premier.one",".lenta.com"]
 for r in ru:
     ds=r["domain_suffix"]; i=ds.index(".рф")+1 if ".рф" in ds else len(ds)
     for w in WANT:

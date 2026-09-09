@@ -38,7 +38,10 @@ def base():
         "stack": "gvisor", "endpoint_independent_nat": True
     }]
     # macOS-специфику убираем: кэш и clash_api приложение задаёт само
-    d.pop("experimental", None)
+    # clash_api убираем (он для меню на маке), КЕШ оставляем: без него remote-набор
+    # geoip-ru качается заново при каждом запуске приложения, и до его загрузки
+    # российский трафик идёт через туннель (см. make-ios-configs-server.sh).
+    d["experimental"] = {"cache_file": {"enabled": True}}
     # Ядро sing-box в приложении iOS (sing-box VT) старше 1.12 и не понимает
     # новый формат DNS (поле "type") и route.default_domain_resolver.
     # Переводим DNS в легаси-формат (через "address") и убираем 1.12+ поля.
