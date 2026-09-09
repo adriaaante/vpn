@@ -211,6 +211,13 @@ if [[ "$MODE" == "client" ]]; then
   else
     echo "  yandex.ru видит нас как: ?  (не ответил — если VPN включён, рос. путь сломан)"
   fi
+  # Сколько адресов сервера ещё живы. Переключение между ними молчаливое, поэтому
+  # без этой строки запас незаметно кончается до последнего адреса.
+  if [[ -x "$(dirname "${BASH_SOURCE[0]}")/server-ips-status.sh" ]]; then
+    echo "  адреса сервера:"
+    bash "$(dirname "${BASH_SOURCE[0]}")/server-ips-status.sh" 2>/dev/null \
+      | grep -E '^  [0-9]|^\[' | sed 's/^/  /'
+  fi
 
   echo
   echo "=== TLS-ХЕНДШЕЙК ==="
