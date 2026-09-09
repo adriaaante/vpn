@@ -12,8 +12,31 @@ CFG="/etc/sing-box/config.json"
 STATE="$HOME/.cache/vpn-active-proto"
 mkdir -p "$(dirname "$STATE")"
 
-# Туннель выключен — нечего отслеживать
-pgrep -x sing-box >/dev/null 2>&1 || exit 0
+# Аварийно выключенный туннель НАДО пробовать поднимать снова. Иначе схема
+# «поменял A-запись — всё починилось само» не работает: пока адрес был мёртв,
+# circuit-breaker ниже успевал выключить туннель, и он оставался выключенным
+# навсегда, до ручного `vpn on`. Теперь пробуем раз в полчаса: адрес сервера мог
+# смениться, а узлы по имени (reality-dns*) подхватят новый сами.
+# Выключение РУКАМИ (`vpn off`) снимает маркер, поэтому осознанное «выключено»
+# мы не трогаем и обратно не включаем.
+AUTOOFF="$HOME/.cache/vpn-auto-off"
+RETRY_SEC="${VPN_RETRY_SEC:-1800}"
+PLIST="${PLIST:-/Library/LaunchDaemons/com.user.singbox.plist}"
+
+if ! pgrep -x sing-box >/dev/null 2>&1; then
+  if [[ -f "$AUTOOFF" ]]; then
+    off_at="$(cat "$AUTOOFF" 2>/dev/null || echo 0)"; now="$(date +%s)"
+    if [[ "$off_at" =~ ^[0-9]+$ ]] && (( now - off_at >= RETRY_SEC )); then
+      # Метку двигаем ДО попытки: не вышло — следующая не раньше, чем через RETRY_SEC.
+      echo "$now" > "$AUTOOFF"
+      sudo launchctl bootstrap system "$PLIST" >/dev/null 2>&1 || true
+      osascript -e 'display notification "Пробую поднять туннель заново — адрес сервера мог смениться." with title "VPN: авто-восстановление"' >/dev/null 2>&1 || true
+    fi
+  fi
+  exit 0
+fi
+# Туннель работает — аварийный маркер больше не нужен.
+rm -f "$AUTOOFF"
 
 # NB: kill-switch здесь НЕ переустанавливаем автоматически — по желанию пользователя
 # управление kill-switch ручное (статус и кнопка «включить заново» в меню).
@@ -40,9 +63,10 @@ else
       osascript -e "display notification \"sing-box завис — перезапущен (попытка $rc/3)\" with title \"VPN: авто-восстановление\" sound name \"Submarine\"" >/dev/null 2>&1 || true
     else
       # 3 рестарта не помогли — туннель сломан. Выключаем, чтобы не флудить сервер.
-      sudo launchctl bootout system /Library/LaunchDaemons/com.user.singbox.plist >/dev/null 2>&1 || true
+      sudo launchctl bootout system "$PLIST" >/dev/null 2>&1 || true
       echo 0 > "$HEALTH"; echo "$now" > "$LASTR"
-      osascript -e 'display notification "Туннель не поднимается — ВЫКЛЮЧЕН, чтобы не флудить сервер (защита от бана IP). Проверь сервер и включи вручную: vpn on" with title "VPN: аварийное отключение" sound name "Submarine"' >/dev/null 2>&1 || true
+      date +%s > "$AUTOOFF"   # метка «выключили МЫ» — значит можно пробовать снова
+      osascript -e 'display notification "Туннель не поднимается — ВЫКЛЮЧЕН, чтобы не флудить сервер. Сам попробую снова через 30 минут; если сменишь A-запись, подхватит новый адрес." with title "VPN: аварийное отключение" sound name "Submarine"' >/dev/null 2>&1 || true
     fi
   fi
 fi

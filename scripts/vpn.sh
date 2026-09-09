@@ -143,6 +143,9 @@ case "$cmd" in
     ;;
   off|stop)
     busy begin
+    # Осознанное выключение: снимаем метку аварийного отключения, иначе сторож
+    # через полчаса включит туннель обратно и это будет выглядеть как самоуправство.
+    rm -f "$HOME/.cache/vpn-auto-off"
     sudo launchctl bootout system "$PLIST" 2>/dev/null || true
     busy end
     echo "⛔ VPN выключен — интернет идёт напрямую."
