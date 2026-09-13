@@ -25,18 +25,27 @@ INSTALL="${INSTALL:-1}"
 OP=add
 if [[ "${1:-}" == "--remove" ]]; then OP=remove; shift; fi
 NEW="${1:-}"
-[[ "$NEW" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || { echo "Использование: bash scripts/add-client-ip.sh [--remove] <IP>"; exit 2; }
+# Принимаем и АДРЕС, и ИМЯ. Имя лучше: у второго сервера будет свой поддомен
+# (скажем se.pine-ledger.fyi), и при блокировке его адреса достаточно поменять
+# A-запись — узел переедет сам, как это уже работает для основного сервера.
+if [[ "$NEW" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then KIND=ip
+elif [[ "$NEW" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]; then KIND=host
+else echo "Использование: bash scripts/add-client-ip.sh [--remove] <IP-или-имя>"; exit 2; fi
 [[ -f "$LOCAL" ]] || { echo "Нет $LOCAL — сначала настрой клиента."; exit 1; }
 
 BAK="$LOCAL.bak.$(date +%s)"
 cp "$LOCAL" "$BAK" && echo "[*] Бэкап: $BAK"
 
-OP="$OP" NEW="$NEW" python3 - "$LOCAL" <<'PY'
+OP="$OP" NEW="$NEW" KIND="$KIND" python3 - "$LOCAL" <<'PY'
 import json,os,sys,copy
-p=sys.argv[1]; new=os.environ["NEW"]; op=os.environ["OP"]
+p=sys.argv[1]; new=os.environ["NEW"]; op=os.environ["OP"]; kind=os.environ["KIND"]
+# Обход «сам сервер мимо туннеля» для адреса задаётся по ip_cidr, для имени — по
+# domain. Внутри ОДНОГО правила условия объединяются по И, поэтому смешивать нельзя.
+bypass = {"ip_cidr":[new+"/32"],"outbound":"direct"} if kind=="ip" else {"domain":[new],"outbound":"direct"}
+def is_bypass(x): return x.get("ip_cidr")==bypass.get("ip_cidr") and x.get("domain")==bypass.get("domain")
 d=json.load(open(p)); outs=d.setdefault("outbounds",[])
 # Тег помечен адресом: по нему же и удаляем, и не плодим дублей при повторном запуске.
-mark="reality-ip-"+new.replace(".","-")
+mark="reality-ip-"+new.replace(".","-")   # тег годится и для адреса, и для имени
 groups=[o for o in outs if o.get("type") in ("urltest","selector")]
 
 if op=="remove":
@@ -45,7 +54,12 @@ if op=="remove":
     outs[:] = [o for o in outs if o.get("tag") not in tags]
     for g in groups: g["outbounds"]=[t for t in g.get("outbounds",[]) if t not in tags]
     r=d.setdefault("route",{}).setdefault("rules",[])
-    r[:] = [x for x in r if x.get("ip_cidr")!=[new+"/32"]]
+    r[:] = [x for x in r if not is_bypass(x)]
+    for dr in d.get("dns",{}).get("rules",[]):
+        if dr.get("server")=="dns-bootstrap" and new in (dr.get("domain") or []):
+            dr["domain"]=[x for x in dr["domain"] if x!=new]
+    d.setdefault("dns",{})["rules"]=[r for r in d.get("dns",{}).get("rules",[])
+                                     if r.get("server")!="dns-bootstrap" or r.get("domain")]
     json.dump(d,open(p,"w"),indent=2,ensure_ascii=False)
     print(f"[*] Убрано узлов: {len(tags)} ({new})"); sys.exit(0)
 
@@ -63,14 +77,32 @@ for port,proto in sorted(by_port.items())[:2]:
     outs.insert(outs.index(proto)+1,o); made.append(o["tag"])
 for g in groups:
     g["outbounds"]=list(dict.fromkeys(list(g.get("outbounds",[]))+made))
+# Имя сервера надо резолвить МИМО туннеля, иначе кольцо: чтобы подключиться, нужно
+# разрешить имя, а разрешить нечем — именно тогда, когда туннель и не работает.
+# Заводим (или переиспользуем) dns-bootstrap поверх непустого direct-dns: пустой
+# direct sing-box отвергает при старте (грабля №6).
+if kind=="host":
+    dns=d.setdefault("dns",{}); srv=dns.setdefault("servers",[])
+    if not any(x.get("tag")=="direct-dns" for x in outs):
+        outs.append({"type":"direct","tag":"direct-dns","connect_timeout":"5s"})
+    if not any(x.get("tag")=="dns-bootstrap" for x in srv):
+        srv.append({"type":"https","tag":"dns-bootstrap","server":"1.1.1.1","detour":"direct-dns"})
+    drules=dns.setdefault("rules",[])
+    hit=next((r for r in drules if r.get("server")=="dns-bootstrap"), None)
+    if hit is None:
+        drules.insert(0,{"domain":[new],"server":"dns-bootstrap"})
+    elif new not in (hit.get("domain") or []):
+        hit["domain"]=list(hit.get("domain") or [])+[new]
+    print(f"[*] {new} резолвится мимо туннеля (иначе не подключиться, когда туннель лёг)")
+
 # Сам сервер — мимо туннеля (ssh и панель). Правило ставим сразу после «локальных сетей».
 rules=d.setdefault("route",{}).setdefault("rules",[])
-if not any(x.get("ip_cidr")==[new+"/32"] for x in rules):
+if not any(is_bypass(x) for x in rules):
     at=next((i for i,x in enumerate(rules) if x.get("ip_is_private")),0)
-    rules.insert(at+1,{"ip_cidr":[new+"/32"],"outbound":"direct"})
+    rules.insert(at+1,bypass)
 json.dump(d,open(p,"w"),indent=2,ensure_ascii=False)
 print(f"[*] Добавлены узлы: {', '.join(made)}")
-print(f"[*] {new}/32 идёт мимо туннеля (ssh и панель к серверу)")
+print(f"[*] {new}{'/32' if kind=='ip' else ''} идёт мимо туннеля (ssh и панель к серверу)")
 PY
 rc=$?
 if (( rc == 3 )); then rm -f "$BAK"; exit 0; fi
