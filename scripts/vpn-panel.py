@@ -44,6 +44,7 @@ DECOY_STATUS = os.environ.get("DECOY_STATUS", "/etc/sing-box/decoy-status.json")
 SHARE_STATE = os.environ.get("SHARE_STATE", "/etc/sing-box/share-state.json")
 BCAST_STATE = os.environ.get("BCAST_STATE", "/etc/sing-box/broadcast-state.json")
 BCAST_LAST = os.environ.get("BCAST_LAST", "/etc/sing-box/broadcast-last.json")
+EXTRA_FILE = os.environ.get("EXTRA_FILE", "/etc/sing-box/extra-ips.txt")
 PORT = int(os.environ.get("PANEL_PORT", "8787"))
 
 share_proc = {"name": None, "proc": None}
@@ -1023,6 +1024,45 @@ def decoy_label(sni):
     return {"icloud": "iCloud"}.get(core, core[:1].upper() + core[1:])
 
 
+def is_private_v4(ip):
+    """RFC1918/CGNAT/link-local — адрес, по которому снаружи не подключиться."""
+    p = ip.split(".")
+    if len(p) != 4 or not all(x.isdigit() for x in p):
+        return False
+    a, b = int(p[0]), int(p[1])
+    return (a == 10 or a == 127 or (a == 172 and 16 <= b <= 31)
+            or (a == 192 and b == 168) or (a == 169 and b == 254)
+            or (a == 100 and 64 <= b <= 127))
+
+
+def extra_servers():
+    """Запасные точки входа: собственные дополнительные адреса ЭТОЙ машины плюс
+    другие наши серверы из EXTRA_FILE (адрес или ИМЯ, по строке, '#' комментарий).
+    Тот же набор кладёт в профили make-ios-configs-server.sh, поэтому у sing-box и
+    у Shadowrocket список один и тот же. Имя лучше адреса: при блокировке хватит
+    поменять A-запись — узел переедет сам, профиль перевыпускать не надо.
+
+    Нужно это ради Shadowrocket: там узлы переключаются РУКАМИ, значит гость должен
+    физически иметь их в списке; в sing-box запасные узлы и так лежат в urltest."""
+    out = []
+    # Собственные адреса машины берём из системы, но СЕРЫЕ отбрасываем: у облаков
+    # с NAT (Oracle) на интерфейсе висит 10.0.0.x, а наружу смотрит другой адрес —
+    # узел на 10.x был бы мёртвым, и человек тыкал бы в него зря.
+    own = sh("ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1") or ""
+    lines = [x for x in own.split() if not is_private_v4(x)]
+    try:
+        lines += open(EXTRA_FILE).read().splitlines()
+    except OSError:
+        pass
+    for line in lines:
+        v = line.split("#", 1)[0].strip()
+        # Пускаем только то, что похоже на адрес или на имя: мусорная строка
+        # превратилась бы в мёртвый узел, который человек будет тыкать зря.
+        if v and re.fullmatch(r"[A-Za-z0-9._-]+", v) and "." in v and v not in out:
+            out.append(v)
+    return out
+
+
 def reality_params():
     """Параметры Reality для сборки vless://-ссылок (Shadowrocket): публичный ключ,
     short_id, flow. Домены руками не печатаем (грабля №1) — читаем из живого конфига.
@@ -1298,7 +1338,8 @@ def guide_html(name):
     """
     u = find_user(name) or {}
     st, dom = server_status(), domain_info()
-    host = dom.get("host") or st["ip"]
+    srv_ip = st["ip"]
+    host = dom.get("host") or srv_ip
     url = share_url(name, host)
     nm = html.escape(pretty(name))
     deep = deep_link(url, name)
@@ -1378,6 +1419,29 @@ def guide_html(name):
                     f'<span class="chev">Показать QR</span></button>'
                     f'<div class="qrslot"></div></div>')
 
+        # Узлы ДРУГИХ наших серверов (Oracle и т.п.). По одному на сервер, а не по
+        # шесть: смысл запасного сервера в «есть куда уйти», а не в переборе прикрытий,
+        # и длинный список человек просто не осилит. Прикрытие берём первое из общего
+        # списка — оно совпадает с серверным по умолчанию.
+        def srv_label(srv):
+            # У имени берём первую метку (se.pine-ledger.fyi -> SE), у адреса —
+            # его самого: «89.46.238.59» человеку понятнее, чем «89».
+            return srv.split(".")[0].upper() if not srv[0].isdigit() else srv
+
+        def srv_node(srv):
+            label = srv_label(srv)
+            link = vless_link(uuid, srv, DECOYS[0], f"{label}-{decoy_label(DECOYS[0])}", rp)
+            esc = html.escape(link)
+            title = f'<span class="nn">Запасной сервер · {html.escape(label)}</span>'
+            if not has_qr:
+                return (f'<div class="node"><div class="nh">{title}</div>'
+                        f'<div class="link">{esc}</div></div>')
+            return (f'<div class="node">'
+                    f'<button type="button" class="nh nodebtn" data-vless="{esc}" '
+                    f'onclick="srqr(this)">{title}'
+                    f'<span class="chev">Показать QR</span></button>'
+                    f'<div class="qrslot"></div></div>')
+
         active = domains[0]
         rest = domains[1:]
         nodes_html = node(active, active == cur)
@@ -1386,6 +1450,13 @@ def guide_html(name):
                            'перестанет открываться. Нажмите на узел, чтобы открыть '
                            'его QR:</div>'
                            + "".join(node(d, False) for d in rest))
+        # Основной адрес из списка вычитаем: он уже показан узлами выше, и «запасной»
+        # узел на тот же адрес только сбил бы с толку, когда его заблокируют.
+        others = [x for x in extra_servers() if x not in (host, srv_ip)]
+        if others:
+            nodes_html += ('<div class="sect-note">Другие наши серверы — на случай, '
+                           'если в Латвии перестанет работать целиком:</div>'
+                           + "".join(srv_node(x) for x in others))
         # Ссылки узлов с глаз убраны в раскрывашку: главный путь — QR, а копирование
         # руками нужно только когда сканировать нечем (страница на том же телефоне).
         if has_qr:
@@ -1394,7 +1465,12 @@ def guide_html(name):
                 f'<span class="lname">Латвия · {html.escape(decoy_label(d))}</span>'
                 f'<button type="button" onclick="cplink(this)">Скопировать</button></div>'
                 f'<div class="link">{html.escape(sr_link(d))}</div></div>'
-                for d in domains)
+                for d in domains) + "".join(
+                f'<div class="lrow"><div class="lhead">'
+                f'<span class="lname">Запасной · {html.escape(srv_label(x))}</span>'
+                f'<button type="button" onclick="cplink(this)">Скопировать</button></div>'
+                f'<div class="link">{html.escape(vless_link(uuid, x, DECOYS[0], srv_label(x) + "-" + decoy_label(DECOYS[0]), rp))}</div></div>'
+                for x in others)
             nodes_html += (
                 '<details class="fold"><summary>Не получается отсканировать?</summary>'
                 '<div class="fbody">'

@@ -33,12 +33,19 @@ SERVER_HOST="${SERVER_HOST:-$(tr -d '[:space:]' < /etc/sing-box/server-host.txt 
 # то есть обслуживает их сразу; в конфиг они попадают отдельными узлами, и клиент
 # сам перескакивает на живой, когда один адрес заблокируют. Без этого гости и айфон
 # знали бы только один адрес и легли бы вместе с ним.
-# Плюс адреса ДРУГИХ наших серверов (второй хостер), если они выписаны в файл —
-# сама машина о них знать не может. По строке на адрес, # — комментарий.
+# Плюс ДРУГИЕ наши серверы (второй хостер), если они выписаны в файл — сама машина
+# о них знать не может. По строке, # — комментарий. Строка может быть адресом ИЛИ
+# ИМЕНЕМ: имя лучше, потому что при блокировке адреса достаточно поменять A-запись —
+# узел переедет сам, а гостю не надо перевыпускать профиль.
 EXTRA_FILE="${EXTRA_FILE:-/etc/sing-box/extra-ips.txt}"
-EXTRA_IPS="${EXTRA_IPS:-$( { ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1
+# Серые адреса (10.x, 172.16-31.x, 192.168.x, 100.64-127.x) отсеиваем: у облаков с
+# NAT (Oracle) на интерфейсе висит именно такой, а наружу смотрит другой — узел на
+# него был бы мёртвым и только зря тратил бы пробы urltest.
+EXTRA_IPS="${EXTRA_IPS:-$( { ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 \
+    | grep -Ev '^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.)'
   sed -e 's/#.*//' "$EXTRA_FILE" 2>/dev/null; } \
-  | grep -E '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' | grep -vx "$IP" | awk '!seen[$0]++' | tr '\n' ' ')}"
+  | grep -E '^([0-9]{1,3}(\.[0-9]{1,3}){3}|[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+)$' \
+  | grep -vx "$IP" | grep -vx "$SERVER_HOST" | awk '!seen[$0]++' | tr '\n' ' ')}"
 
 # Конфиги содержат UUID/short_id (учётные данные клиента) и раздаются по ОТКРЫТОМУ
 # HTTP. Порт 8080 закрываем при выходе (Ctrl+C/ошибка) и чистим /tmp/ios, чтобы не
@@ -80,16 +87,22 @@ for d in DECOYS:
     t="reality-"+d.split(".")[-2]; tags.append(t); vs.append(vless(t,d))
 for port,d in ALT:
     t=f"reality-alt{port}"; tags.append(t); vs.append(vless(t,d,port))
-# Узлы на запасные адреса сервера: по одному на адрес, чтобы не раздувать пробы
-# urltest (много параллельных TLS к одному серверу — сами по себе плохой признак).
+# Узлы на запасные адреса и другие наши серверы: по одному на штуку, чтобы не
+# раздувать пробы urltest (много параллельных TLS к одному серверу — сами по себе
+# плохой признак). Имена собираем отдельно: их надо разрешать МИМО туннеля.
+EXTRA_HOSTS=[]; nip=1
 for i,extra in enumerate(os.environ.get("EXTRA_IPS","").split()):
-    o=vless(f"reality-ip{i+2}",DECOYS[i % len(DECOYS)]); o["server"]=extra
+    isip=all(p.isdigit() for p in extra.split("."))
+    if isip: nip+=1; tag=f"reality-ip{nip}"
+    else: EXTRA_HOSTS.append(extra); tag="reality-srv-"+extra.split(".")[0]
+    o=vless(tag,DECOYS[i % len(DECOYS)]); o["server"]=extra
     tags.append(o["tag"]); vs.append(o)
 HOST=os.environ.get("SERVER_HOST","").strip()
 if HOST:
     for port,d in ((443,"www.apple.com"),(2053,"www.cloudflare.com")):
         o=vless(f"reality-dns{port}",d,port); o["server"]=HOST
         tags.append(o["tag"]); vs.append(o)
+BOOT=([HOST] if HOST else [])+EXTRA_HOSTS
 src["outbounds"]=[
     {"type":"selector","tag":"proxy","outbounds":["auto"]+tags,"default":"auto"},
     {"type":"urltest","tag":"auto","outbounds":tags,"url":"https://www.gstatic.com/generate_204",
@@ -111,13 +124,15 @@ def base():
     d["experimental"]={"cache_file":{"enabled":True}}
     d["dns"]={"servers":[{"tag":"dns-remote","address":"https://1.1.1.1/dns-query","detour":"proxy"}],
               "strategy":"ipv4_only","reverse_mapping":True,"final":"dns-remote"}
-    if HOST:
-        # Имя сервера резолвим МИМО туннеля, иначе кольцо: подключиться нельзя, пока
-        # имя не разрешено, а разрешить нечем. detour обязан вести на НЕПУСТОЙ
-        # outbound — пустой "direct" sing-box отвергает при старте.
+    if BOOT:
+        # Имена серверов резолвим МИМО туннеля, иначе кольцо: подключиться нельзя,
+        # пока имя не разрешено, а разрешить нечем ровно тогда, когда туннель и лёг.
+        # detour обязан вести на НЕПУСТОЙ outbound — пустой "direct" sing-box
+        # отвергает при старте. Запасные серверы по имени сюда тоже обязаны попасть:
+        # иначе узел, ради которого всё и затевалось, не поднимется при аварии.
         d["outbounds"].append({"type":"direct","tag":"direct-dns","connect_timeout":"5s"})
         d["dns"]["servers"].append({"tag":"dns-bootstrap","address":"https://1.1.1.1/dns-query","detour":"direct-dns"})
-        d["dns"]["rules"]=[{"domain":[HOST],"server":"dns-bootstrap"}]
+        d["dns"]["rules"]=[{"domain":BOOT,"server":"dns-bootstrap"}]
     d.get("route",{}).pop("default_domain_resolver",None)
     return d
 def is_ru_direct(x):
